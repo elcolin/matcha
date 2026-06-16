@@ -1,5 +1,6 @@
 from flask import Flask
 from dotenv import load_dotenv
+from app.routes import main_bp
 from app.auth.routes import auth_bp
 from app.users.routes import users_bp
 from app.match.routes import match_bp
@@ -12,6 +13,7 @@ def create_app():
 
     app.config.from_object("app.config.Config")
 
+    app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(match_bp)
