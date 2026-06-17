@@ -78,44 +78,19 @@
 <!-- PROFILES -->
 <section class="bg-light py-5">
     <div class="container">
-        <h2 class="text-center mb-4">People near you</h2>
+
+        <h2 class="text-center mb-4">
+            People near you
+        </h2>
 
         <div class="row g-4">
 
-            <div class="col-md-4">
-                <div class="card profile-card shadow-sm">
-                    <img src="{{ url_for('static', filename='img/profile1.jpg') }}" class="card-img-top">
-                    <div class="card-body text-center">
-                        <h5>Emma, 24</h5>
-                        <p class="text-muted">Paris • Coffee & travel</p>
-                        <a href="#" class="btn btn-outline-danger btn-sm">View</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-                <div class="card profile-card shadow-sm">
-                    <img src="{{ url_for('static', filename='img/profile2.jpg') }}" class="card-img-top">
-                    <div class="card-body text-center">
-                        <h5>Liam, 27</h5>
-                        <p class="text-muted">Lyon • Music & gym</p>
-                        <a href="#" class="btn btn-outline-danger btn-sm">View</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-                <div class="card profile-card shadow-sm">
-                    <img src="{{ url_for('static', filename='img/profile3.jpg') }}" class="card-img-top">
-                    <div class="card-body text-center">
-                        <h5>Sofia, 25</h5>
-                        <p class="text-muted">Paris • Art & food</p>
-                        <a href="#" class="btn btn-outline-danger btn-sm">View</a>
-                    </div>
-                </div>
-            </div>
+            {% for profile in profiles %}
+                {% include 'components/profile_card.html' %}
+            {% endfor %}
 
         </div>
+
     </div>
 </section>
 
