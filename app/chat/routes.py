@@ -8,6 +8,7 @@ from app.security import build_notification_payload
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
+HEARTBEAT_INTERVAL_SECONDS = 5
 
 
 @chat_bp.route("", methods=["GET"])
@@ -97,6 +98,6 @@ def stream_events():
 
             unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
             yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
-            time.sleep(5)
+            time.sleep(HEARTBEAT_INTERVAL_SECONDS)
 
     return Response(stream_with_context(generator()), mimetype="text/event-stream")

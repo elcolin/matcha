@@ -7,6 +7,7 @@ from app.profile.routes import _profile_payload
 from app.utils import is_blocked_between, login_required
 
 match_bp = Blueprint("match", __name__, url_prefix="/match")
+MISSING_DISTANCE_KM = 99999
 
 
 def _distance_km(a_lat, a_lon, b_lat, b_lon):
@@ -84,7 +85,7 @@ def _candidate_profiles(viewer_id: int):
     output.sort(
         key=lambda c: (
             0 if c["same_area"] else 1,
-            c["distance_km"] if c["distance_km"] is not None else 99999,
+            c["distance_km"] if c["distance_km"] is not None else MISSING_DISTANCE_KM,
             -c["shared_tags_count"],
             -c.get("popularity_score", 0),
         )
@@ -127,7 +128,10 @@ def _apply_sort(items, args):
     if sort_by == "age":
         items.sort(key=lambda x: x.get("age") if x.get("age") is not None else -1, reverse=reverse)
     elif sort_by == "location":
-        items.sort(key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else 99999, reverse=(not reverse))
+        items.sort(
+            key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else MISSING_DISTANCE_KM,
+            reverse=(not reverse),
+        )
     elif sort_by == "popularity":
         items.sort(key=lambda x: x.get("popularity_score", 0), reverse=reverse)
     elif sort_by == "tags":
