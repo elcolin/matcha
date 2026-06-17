@@ -23,8 +23,16 @@
         <a class="navbar-brand" href="/">❤️ Matcha</a>
 
         <div class="ms-auto">
-            <a href="/login" class="btn btn-outline-danger me-2">Login</a>
-            <a href="/register" class="btn btn-danger">Sign Up</a>
+            {% if current_user %}
+                <a href="/notifications" class="btn btn-outline-secondary me-2">
+                    Notifications <span id="notif-badge" class="badge bg-danger">{{ unread_notifications }}</span>
+                </a>
+                <a href="/profile/me" class="btn btn-outline-danger me-2">My Profile</a>
+                <a href="/logout" class="btn btn-danger">Logout</a>
+            {% else %}
+                <a href="/login" class="btn btn-outline-danger me-2">Login</a>
+                <a href="/register" class="btn btn-danger">Sign Up</a>
+            {% endif %}
         </div>
     </div>
 </nav>
@@ -110,6 +118,18 @@
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% if current_user %}
+<script>
+  const evt = new EventSource('/chat/stream');
+  evt.addEventListener('heartbeat', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const badge = document.getElementById('notif-badge');
+      if (badge) badge.textContent = data.unread_notifications ?? 0;
+    } catch (_) {}
+  });
+</script>
+{% endif %}
 
 </body>
 </html>
