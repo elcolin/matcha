@@ -75,7 +75,7 @@
 
                     <!-- TAGS -->
                     <div class="mb-3">
-                        {% for interest in profile.interests.split(' • ') %}
+                        {% for interest in profile.interests %}
                             <span class="tag">{{ interest }}</span>
                         {% endfor %}
                     </div>
