@@ -11,7 +11,7 @@ def home():
             "age": 7,
             "city": "Paris",
             "interests": "Art, coffee, and shiny things",
-            "image": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=900&q=80",
+            "image": "",
         },
         {
             "id": 2,
@@ -19,7 +19,7 @@ def home():
             "age": 6,
             "city": "Lyon",
             "interests": "Travel and sunsets",
-            "image": "https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=900&q=80",
+            "image": "",
         },
     ]
     return render_template("index.html", name="Matcha User", profiles=profiles)

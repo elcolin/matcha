@@ -13,7 +13,7 @@ def detail(id):
             "city": "Paris",
             "interests": "Coffee • Travel • Photography • Sunsets",
             "bio": "I believe in love at first chirp. I collect shiny blue objects and build cozy nests on Sundays.",
-            "image": "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=900&q=80",
+            "image": "",
         },
         {
             "id": 2,
@@ -22,7 +22,7 @@ def detail(id):
             "city": "Lyon",
             "interests": "Music • Hiking • Espresso",
             "bio": "Always up for a spontaneous trip and deep conversations over coffee.",
-            "image": "https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=900&q=80",
+            "image": "",
         },
     ]
 
