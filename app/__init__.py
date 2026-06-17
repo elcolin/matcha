@@ -5,6 +5,7 @@ from app.auth.routes import auth_bp
 from app.users.routes import users_bp
 from app.match.routes import match_bp
 from app.chat.routes import chat_bp
+from app.profile.routes import profile_bp
 
 load_dotenv()
 
@@ -18,5 +19,6 @@ def create_app():
     app.register_blueprint(users_bp)
     app.register_blueprint(match_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(profile_bp)
 
     return app

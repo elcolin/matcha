@@ -44,8 +44,8 @@
 <!-- NAV -->
 <nav class="navbar navbar-light bg-white shadow-sm">
     <div class="container">
-        <a class="navbar-brand fw-bold" href="/">❤️ Matcha Flock</a>
-        <a href="/explore" class="btn btn-outline-danger btn-sm">Back to Explore</a>
+        <a class="navbar-brand fw-bold" href="{{ url_for('main.home') }}">❤️ Matcha Flock</a>
+        <a href="{{ url_for('main.home') }}" class="btn btn-outline-danger btn-sm">Back to Explore</a>
     </div>
 </nav>
 
@@ -59,29 +59,25 @@
             <div class="card profile-card shadow">
 
                 <!-- IMAGE -->
-                <img src="{{ url_for('static', filename='img/profile1.jpg') }}"
+                <img src="{{ profile.image }}"
                      class="profile-img"
-                     alt="Profile picture">
+                     alt="{{ profile.name }} profile picture">
 
                 <!-- BODY -->
                 <div class="card-body p-4">
 
                     <!-- NAME + AGE -->
-                    <h2 class="fw-bold mb-0">Satin BowerBird, 7 🐦</h2>
-                    <p class="text-muted">Paris • Night owl • Coffee addict</p>
+                    <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
+                    <p class="text-muted">{{ profile.city }}</p>
 
                     <!-- BIO -->
-                    <p>
-                        I believe in love at first chirp.
-                        Collecting shiny objects (blue), and long nest-building sessions on Sundays.
-                    </p>
+                    <p>{{ profile.bio }}</p>
 
                     <!-- TAGS -->
                     <div class="mb-3">
-                        <span class="tag">Coffee</span>
-                        <span class="tag">Travel</span>
-                        <span class="tag">Photography</span>
-                        <span class="tag">Sunsets</span>
+                        {% for interest in profile.interests.split(' • ') %}
+                            <span class="tag">{{ interest }}</span>
+                        {% endfor %}
                     </div>
 
                     <!-- ACTION BUTTONS -->
