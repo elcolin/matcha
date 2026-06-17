@@ -9,7 +9,20 @@ from werkzeug.security import check_password_hash, generate_password_hash
 COMMON_ENGLISH_PASSWORDS = {
     "password", "qwerty", "hello", "welcome", "dragon", "football", "baseball",
     "letmein", "sunshine", "freedom", "superman", "mustang", "monkey", "shadow",
-    "princess", "trustno1", "iloveyou", "admin", "matcha"
+    "princess", "trustno1", "iloveyou", "admin", "matcha", "passw0rd", "abc123",
+    "123456", "1234567", "12345678", "123456789", "1234567890", "111111", "000000",
+    "asdfgh", "zxcvbn", "qwertyuiop", "starwars", "master", "login", "welcome1",
+    "changeme", "secret", "unknown", "donald", "pokemon", "soccer", "hockey",
+    "computer", "internet", "flower", "summer", "winter", "autumn", "spring",
+    "tigger", "charlie", "michael", "jessica", "daniel", "andrew", "ashley",
+    "pepper", "whatever", "baseball1", "football1", "basketball", "jordan", "maggie",
+    "access", "matrix", "killer", "scooter", "ginger", "michelle", "thunder",
+    "buster", "cookie", "orange", "banana", "qazwsx", "qweasd", "zaq12wsx",
+    "liverpool", "arsenal", "chelsea", "manchester", "freestyle", "lovely",
+    "cheese", "chocolate", "summer2024", "summer2025", "welcome123", "passion",
+    "eagle", "monkey123", "hottie", "cowboy", "corvette", "mercedes", "ferrari",
+    "mustang1", "silver", "golden", "diamond", "abcdef", "abcdefg", "abcdefgh",
+    "hannah", "hunter", "rabbit", "ginger1", "sunshine1", "flower1", "soccer1"
 }
 
 

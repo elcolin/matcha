@@ -156,10 +156,15 @@ def profile_me():
     tags = data.get("tags")
     if isinstance(tags, list):
         execute("DELETE FROM user_tags WHERE user_id = ?", (user_id,))
-        for tag_name in {str(t).strip().lower() for t in tags if str(t).strip()}:
+        clean_tags = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+        for tag_name in clean_tags:
             execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
-            tag = query_one("SELECT id FROM tags WHERE name = ?", (tag_name,))
-            execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
+
+        if clean_tags:
+            placeholders = ",".join(["?"] * len(clean_tags))
+            tag_rows = query_all(f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags))
+            for tag in tag_rows:
+                execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
 
     return jsonify(_profile_payload(user_id))
 
@@ -214,7 +219,16 @@ def detail(id):
         if is_blocked_between(viewer["id"], id):
             raise APIError("Profile unavailable", 403)
 
-        execute("INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)", (viewer["id"], id))
+        recent_view = query_one(
+            """
+            SELECT id
+            FROM profile_views
+            WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
+            """,
+            (viewer["id"], id),
+        )
+        if not recent_view:
+            execute("INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)", (viewer["id"], id))
         add_notification(id, "profile_view", build_notification_payload(viewer_id=viewer["id"]))
         update_popularity(id)
 

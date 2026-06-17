@@ -3,6 +3,9 @@ from flask import g, jsonify, session
 
 from app.db import execute, query_one
 
+POPULARITY_LIKE_WEIGHT = 10
+POPULARITY_REPORT_PENALTY = 15
+
 
 class APIError(Exception):
     def __init__(self, message, status=400):
@@ -38,7 +41,7 @@ def update_popularity(user_id: int):
     reports = query_one("SELECT COUNT(*) AS reports FROM reports WHERE reported_id = ?", (user_id,))
     report_count = reports["reports"] if reports else 0
 
-    score = max(0, (like_count * 10) + views - (report_count * 15))
+    score = max(0, (like_count * POPULARITY_LIKE_WEIGHT) + views - (report_count * POPULARITY_REPORT_PENALTY))
     execute("UPDATE profiles SET popularity_score = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", (score, user_id))
     return score
 

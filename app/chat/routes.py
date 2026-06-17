@@ -8,7 +8,7 @@ from app.security import build_notification_payload
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
-HEARTBEAT_INTERVAL_SECONDS = 5
+HEARTBEAT_INTERVAL_SECONDS = 10
 
 
 @chat_bp.route("", methods=["GET"])
@@ -77,27 +77,30 @@ def stream_events():
         last_notif_id = 0
         last_message_id = 0
 
-        while True:
-            notifications = query_all(
-                "SELECT id, type, payload, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id ASC",
-                (current, last_notif_id),
-            )
-            if notifications:
-                for notif in notifications:
-                    last_notif_id = notif["id"]
-                    yield f"event: notification\ndata: {json.dumps(dict(notif))}\n\n"
+        try:
+            while True:
+                notifications = query_all(
+                    "SELECT id, type, payload, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id ASC",
+                    (current, last_notif_id),
+                )
+                if notifications:
+                    for notif in notifications:
+                        last_notif_id = notif["id"]
+                        yield f"event: notification\ndata: {json.dumps(dict(notif))}\n\n"
 
-            messages = query_all(
-                "SELECT id, sender_id, content, created_at FROM messages WHERE receiver_id = ? AND id > ? ORDER BY id ASC",
-                (current, last_message_id),
-            )
-            if messages:
-                for msg in messages:
-                    last_message_id = msg["id"]
-                    yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
+                messages = query_all(
+                    "SELECT id, sender_id, content, created_at FROM messages WHERE receiver_id = ? AND id > ? ORDER BY id ASC",
+                    (current, last_message_id),
+                )
+                if messages:
+                    for msg in messages:
+                        last_message_id = msg["id"]
+                        yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
 
-            unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
-            yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
-            time.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
+                yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
+                time.sleep(HEARTBEAT_INTERVAL_SECONDS)
+        except GeneratorExit:
+            return
 
     return Response(stream_with_context(generator()), mimetype="text/event-stream")

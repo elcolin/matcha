@@ -20,6 +20,12 @@ auth_bp = Blueprint("auth", __name__)
 
 def _is_locked_out(username: str):
     cfg = current_app.config
+    execute(
+        """
+        DELETE FROM login_attempts
+        WHERE attempted_at < datetime('now', '-2 days')
+        """,
+    )
     row = query_one(
         """
         SELECT COUNT(*) AS failed_count

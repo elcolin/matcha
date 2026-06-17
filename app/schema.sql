@@ -143,3 +143,12 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_login_attempts_username_attempted_at
+ON login_attempts (username, attempted_at);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read
+ON notifications (user_id, is_read, id);
+
+CREATE INDEX IF NOT EXISTS idx_messages_receiver_id
+ON messages (receiver_id, id);
