@@ -15,6 +15,11 @@ Deliberately compact, beginner-friendly stack: **Flask** (micro-framework, no OR
 matcha/
 ├── run.py                     # entry point (flask run / python run.py)
 ├── requirements.txt           # flask, python-dotenv, watchdog
+├── requirements-dev.txt       # requirements.txt + pytest
+├── pytest.ini                 # pytest config (testpaths = tests)
+├── scripts/seed_db.py         # fills the DB with 500+ fake profiles for testing
+├── tests/                     # pytest suite, run against a throwaway SQLite DB
+├── .github/workflows/ci.yml   # GitHub Actions: runs the test suite on push/PR
 ├── app/
 │   ├── __init__.py            # app factory, blueprints, session loading, notification badge
 │   ├── config.py              # configuration (secret key, DB path, uploads, token TTLs...)
@@ -57,6 +62,17 @@ python run.py
 ```
 
 The app is served at `http://127.0.0.1:5000`. The SQLite database and the upload folder are created automatically on first run — no migration command needed.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests live under `tests/` and use Flask's test client against a throwaway SQLite database created fresh for every test (see `tests/conftest.py`) — running them never touches `instance/matcha.db`. They cover password validation, the full register/verify/login/logout/reset flow, profile editing and the GPS-consent rule, likes/blocks/matching (including a regression test for the browsing/search `TypeError` described below), chat access control and the presence-based notification suppression, and the seed script.
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same test suite on every push and pull request against `main`, on Python 3.11 and 3.12.
 
 ## Configuration
 
@@ -133,3 +149,17 @@ Replaced it with a real English word list: `app/data/english_words.txt` (~210k l
 The subject requires at least 500 distinct profiles in the database for evaluation. Registering that many by hand through `/register` would also be far too slow, since each account needs email verification.
 
 Added `scripts/seed_db.py`, which inserts profiles directly with the same SQL helpers the app uses (`app/db.py`), bypassing the verification flow on purpose (seeded accounts are created already `email_verified`). It picks randomized-but-plausible first/last names, one of ten real French cities (with slightly jittered real coordinates, so distance-based sorting has something meaningful to work with), a gender/orientation/age/bio/tag set, and one placeholder avatar photo per profile (so the "needs a profile photo to like someone" rule doesn't block seeded accounts during testing). All seeded accounts share one password (`Seeded!Pass99x`) so any of them can be used to log in and test browsing/search/matching against realistic volume.
+
+### 6. Test suite and CI pipeline
+
+Up to this point every fix above had been verified by hand with `curl`/one-off scripts, which doesn't catch regressions. Added a `pytest` suite under `tests/`:
+
+- `tests/conftest.py` provides an `app`/`client` fixture pair that points `Config.DATABASE_PATH` (and `UPLOAD_FOLDER`) at a fresh temp file per test via `monkeypatch`, so the whole suite runs against throwaway, fully isolated SQLite databases and never touches `instance/matcha.db`. It also has small helpers (`register_user`, `login_user`, `give_profile_photo`) shared across test files.
+- `tests/test_security.py` — password-strength rules and the dictionary-word check (item 4 above), including the "decorated edges" case (`Summer2025!`).
+- `tests/test_auth.py` — register/verify/login/logout, the login-lockout rate limit, and the password-reset flow.
+- `tests/test_profile.py` — profile editing, the GPS-consent-requires-manual-location rule, the photo-required-to-like rule, mutual likes creating a match, and blocking.
+- `tests/test_match.py` — includes a direct regression test for the browsing/search `TypeError` from item 2 (asserts `/match/browse-view` and `/match/search-view` return 200 for users with no city/neighborhood set), plus suggestion filtering and age-range search.
+- `tests/test_chat.py` — chat is rejected between non-matched users, matched users can exchange messages, and the presence-based notification suppression from item 3 (a message sent to someone actively viewing the conversation does **not** create a `new_message` notification, but does when they aren't).
+- `tests/test_seed_script.py` — runs `scripts/seed_db.py`'s `seed()` function against a temp database and checks it creates the requested number of profiles.
+
+Also added `.github/workflows/ci.yml`: a GitHub Actions workflow that, on every push and pull request targeting `main`, installs `requirements-dev.txt`, byte-compiles `app/` and `scripts/` as a quick sanity check, and runs `python -m pytest` on Python 3.11 and 3.12.

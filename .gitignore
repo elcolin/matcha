@@ -4,3 +4,4 @@ app/static/uploads/
 .env
 *.db
 venv/
+.pytest_cache/
