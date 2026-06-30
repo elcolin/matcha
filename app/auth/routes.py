@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, g, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 
 from app.db import execute, query_one
 from app.security import (
@@ -138,16 +138,7 @@ def verify_email(token):
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
-        return render_template_string(
-            """
-            <h1>Login</h1>
-            <form method='post' action='/login'>
-              <input name='username' placeholder='Username' required>
-              <input name='password' type='password' placeholder='Password' required>
-              <button type='submit'>Login</button>
-            </form>
-            """
-        )
+        return render_template('login.html') 
 
     data = request.get_json(silent=True) or request.form
     username = str(data.get("username", "")).strip()
