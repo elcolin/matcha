@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, g, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 
 from app.db import execute, query_one
 from app.security import (
@@ -138,49 +138,35 @@ def verify_email(token):
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
-        return render_template_string(
-            """
-            <h1>Login</h1>
-            <form method='post' action='/login'>
-              <input name='username' placeholder='Username' required>
-              <input name='password' type='password' placeholder='Password' required>
-              <button type='submit'>Login</button>
-            </form>
-            """
-        )
+        return render_template("login.html")
 
     data = request.get_json(silent=True) or request.form
     username = str(data.get("username", "")).strip()
     password = str(data.get("password", ""))
 
     if not username or not password:
-        raise APIError("username and password are required", 400)
+        return render_template("login.html", error="Username and password are required")
 
     if _is_locked_out(username):
-        raise APIError("Too many failed attempts. Please retry later.", 429)
+        return render_template("login.html", error="Too many failed attempts. Please try again later.")
 
     user = query_one("SELECT * FROM users WHERE username = ?", (username,))
     if not user or not verify_password(user["password_hash"], password):
         execute("INSERT INTO login_attempts (username, success) VALUES (?, 0)", (username,))
-        raise APIError("Invalid credentials", 401)
+        return render_template("login.html", error="Invalid username or password")
 
     if not user["email_verified"]:
-        raise APIError("Email not verified", 403)
+        return render_template("login.html", error="Please verify your email before logging in")
 
     execute("INSERT INTO login_attempts (username, success) VALUES (?, 1)", (username,))
-
     session.clear()
     session["user_id"] = user["id"]
     session_token = secrets.token_urlsafe(32)
     session["session_token"] = session_token
     session["logout_token"] = secrets.token_urlsafe(16)
+    execute("INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)", (user["id"], session_token))
 
-    execute(
-        "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
-        (user["id"], session_token),
-    )
-
-    return jsonify({"message": "Logged in"})
+    return redirect("/")
 
 
 @auth_bp.route("/logout", methods=["GET", "POST"])
@@ -198,59 +184,72 @@ def logout():
     return jsonify({"message": "Logged out"})
 
 
-@auth_bp.route("/password-reset/request", methods=["POST"])
+@auth_bp.route("/password-reset/request", methods=["GET", "POST"])
 def request_password_reset():
-    data = request.get_json(silent=True) or request.form
+    if request.method == "GET":
+        return render_template("forgot_password.html")
+
+    json_data = request.get_json(silent=True)
+    is_api_request = request.is_json or json_data is not None
+    data = json_data or request.form
     identifier = str(data.get("email", "")).strip().lower()
 
     if not identifier:
-        raise APIError("email is required", 400)
+        if is_api_request:
+            raise APIError("email is required", 400)
+        return render_template("forgot_password.html", error="Email is required")
 
     user = query_one("SELECT id FROM users WHERE email = ?", (identifier,))
     if not user:
-        return jsonify({"message": "If your account exists, a reset email has been sent."})
+        if is_api_request:
+            return jsonify({"message": "If your account exists, a reset email has been sent."})
+        return render_template("forgot_password.html", success="If your account exists, a reset link has been sent.")
 
     token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
-    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])).isoformat()
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
+    ).isoformat()
     execute(
         "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
         (user["id"], token, expires_at),
     )
 
     reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
-    return jsonify(
-        {
-            "message": "If your account exists, a reset email has been sent.",
-            "reset_link": reset_link,
-        }
-    )
-
-
-@auth_bp.route("/password-reset/confirm/<token>", methods=["POST"])
-def confirm_password_reset(token):
-    data = request.get_json(silent=True) or request.form
-    new_password = str(data.get("password", ""))
-
-    is_ok, reason = validate_password_strength(new_password)
-    if not is_ok:
-        raise APIError(reason, 400)
-
-    try:
-        user_id = read_signed_token(
-            current_app.config["SECRET_KEY"],
-            token,
-            "password_reset",
-            current_app.config["PASSWORD_RESET_TTL_SECONDS"],
+    if is_api_request:
+        return jsonify(
+            {
+                "message": "If your account exists, a reset email has been sent.",
+                "reset_link": reset_link,
+            }
         )
-    except Exception:
-        raise APIError("Invalid or expired reset token", 400)
 
-    row = query_one("SELECT id, expires_at, used_at FROM password_resets WHERE token = ?", (token,))
-    if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
-        raise APIError("Reset link is no longer valid", 400)
+    return render_template("forgot_password.html", success=f"Reset link: {reset_link}")
 
-    execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
-    execute("UPDATE password_resets SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
-    execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+# @auth_bp.route("/password-reset/confirm/<token>", methods=["POST"])
+# def confirm_password_reset(token):
+#     data = request.get_json(silent=True) or request.form
+#     new_password = str(data.get("password", ""))
 
-    return jsonify({"message": "Password updated"})
+#     is_ok, reason = validate_password_strength(new_password)
+#     if not is_ok:
+#         raise APIError(reason, 400)
+
+#     try:
+#         user_id = read_signed_token(
+#             current_app.config["SECRET_KEY"],
+#             token,
+#             "password_reset",
+#             current_app.config["PASSWORD_RESET_TTL_SECONDS"],
+#         )
+#     except Exception:
+#         raise APIError("Invalid or expired reset token", 400)
+
+#     row = query_one("SELECT id, expires_at, used_at FROM password_resets WHERE token = ?", (token,))
+#     if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+#         raise APIError("Reset link is no longer valid", 400)
+
+#     execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
+#     execute("UPDATE password_resets SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+#     execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+
+#     return jsonify({"message": "Password updated"})
