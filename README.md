@@ -93,7 +93,7 @@ As requested, no bonus feature was built: no third-party OAuth login, no drag-an
 ## Notes for the defense
 
 - The Flask dev server (`python run.py`) is enough for a local demo; a production server (Gunicorn, Nginx...) wasn't set up since it isn't required for evaluation.
-- The database needs at least 500 distinct profiles for evaluation: no seed script ships by default — add one if needed (direct inserts via `sqlite3`, or a small Python script using the helpers in `app/db.py`).
+- The database needs at least 500 distinct profiles for evaluation: run `python scripts/seed_db.py` (550 profiles by default, `--count` to change that) to fill it with fake-but-plausible accounts spread across several cities, ages, genders and tags. Every seeded account shares the password `Seeded!Pass99x` and is already email-verified, so you can log into any of them straight away.
 
 ## Development log
 
@@ -127,3 +127,9 @@ Two separate issues reported after using the chat feature for real:
 The subject requires that "commonly used dictionary words (regardless of language) should not be accepted as passwords." The original check only compared the password against a hand-typed list of ~100 common passwords (`password`, `qwerty`, etc.) — not an actual dictionary check.
 
 Replaced it with a real English word list: `app/data/english_words.txt` (~210k lowercase words, derived from the system dictionary, bundled in the repo so the check doesn't depend on the OS having `/usr/share/dict/words` installed). `app/security.py` loads it once into a cached `frozenset` and `is_dictionary_word()` checks the password — with any leading/trailing digits and symbols stripped first (so `Summer2025!` is still caught as the word "summer") — against that set. No extra dependency was added; it's just a static text file read at startup.
+
+### 5. Seed script for the 500-profile evaluation requirement
+
+The subject requires at least 500 distinct profiles in the database for evaluation. Registering that many by hand through `/register` would also be far too slow, since each account needs email verification.
+
+Added `scripts/seed_db.py`, which inserts profiles directly with the same SQL helpers the app uses (`app/db.py`), bypassing the verification flow on purpose (seeded accounts are created already `email_verified`). It picks randomized-but-plausible first/last names, one of ten real French cities (with slightly jittered real coordinates, so distance-based sorting has something meaningful to work with), a gender/orientation/age/bio/tag set, and one placeholder avatar photo per profile (so the "needs a profile photo to like someone" rule doesn't block seeded accounts during testing). All seeded accounts share one password (`Seeded!Pass99x`) so any of them can be used to log in and test browsing/search/matching against realistic volume.
