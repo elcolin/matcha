@@ -43,6 +43,7 @@
                         <span id="notif-badge" class="badge bg-danger">{{ unread_notifications }}</span>
                     </span>
                 </li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('chat.chat_view') }}">Chat</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('profile.detail', id=current_user.id) }}">My Profile</a></li>
                 {% endif %}
             </ul>
