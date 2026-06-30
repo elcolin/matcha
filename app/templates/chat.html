@@ -88,6 +88,16 @@
       renderMessage(msg);
     }
   });
+
+  // Tell the server we're actively viewing this conversation, so the other
+  // user doesn't get a "new message" notification while we're looking at it
+  // (the message still appears live above either way).
+  function pingPresence() {
+    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+  }
+  pingPresence();
+  const presenceInterval = setInterval(pingPresence, 8000);
+  window.addEventListener('pagehide', () => clearInterval(presenceInterval));
 </script>
 {% endif %}
 {% endblock %}

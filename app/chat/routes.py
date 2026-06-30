@@ -8,7 +8,22 @@ from app.security import build_notification_payload
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
-HEARTBEAT_INTERVAL_SECONDS = 10
+POLL_INTERVAL_SECONDS = 1
+HEARTBEAT_EVERY_N_POLLS = 10  # send the unread-count heartbeat every ~10s
+PRESENCE_STALE_SECONDS = 15  # how long a "viewing this chat" ping stays valid
+
+
+def _is_viewing_chat(viewer_id, partner_id):
+    """True if `viewer_id` pinged the chat page with `partner_id` open recently."""
+    row = query_one(
+        """
+        SELECT 1 FROM chat_presence
+        WHERE user_id = ? AND partner_id = ?
+          AND updated_at >= datetime('now', ?)
+        """,
+        (viewer_id, partner_id, f"-{PRESENCE_STALE_SECONDS} seconds"),
+    )
+    return bool(row)
 
 
 @chat_bp.route("", methods=["GET"])
@@ -95,9 +110,31 @@ def send_message(user_id):
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
         (current, user_id, content),
     )
-    add_notification(user_id, "new_message", build_notification_payload(from_user_id=current, preview=content[:100]))
+
+    # Skip the notification if the recipient already has this conversation
+    # open — they'll see the message live via the SSE "message" event anyway.
+    if not _is_viewing_chat(user_id, current):
+        add_notification(user_id, "new_message", build_notification_payload(from_user_id=current, preview=content[:100]))
 
     return jsonify({"sent": True})
+
+
+@chat_bp.route("/<int:user_id>/presence", methods=["POST"])
+@login_required
+def ping_presence(user_id):
+    """Called periodically by the chat page while a conversation is open."""
+    current = g.current_user["id"]
+    if not is_match(current, user_id):
+        raise APIError("Chat is available only for connected users", 403)
+
+    execute(
+        """
+        INSERT INTO chat_presence (user_id, partner_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET partner_id = excluded.partner_id, updated_at = excluded.updated_at
+        """,
+        (current, user_id),
+    )
+    return jsonify({"ok": True})
 
 
 @chat_bp.route("/stream", methods=["GET"])
@@ -108,6 +145,7 @@ def stream_events():
     def generator():
         last_notif_id = 0
         last_message_id = 0
+        polls = 0
 
         try:
             while True:
@@ -129,9 +167,15 @@ def stream_events():
                         last_message_id = msg["id"]
                         yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
 
-                unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
-                yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
-                time.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                # Only recompute/emit the unread-count heartbeat periodically,
+                # so messages/notifications are picked up almost instantly
+                # (every POLL_INTERVAL_SECONDS) without hammering the DB.
+                if polls % HEARTBEAT_EVERY_N_POLLS == 0:
+                    unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
+                    yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
+
+                polls += 1
+                time.sleep(POLL_INTERVAL_SECONDS)
         except GeneratorExit:
             return
 

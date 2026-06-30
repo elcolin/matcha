@@ -71,7 +71,7 @@ def _candidate_profiles(viewer_id: int):
 
         shared_tags = _shared_tag_count(viewer_id, candidate["id"])
         distance_km = _distance_km(viewer.get("latitude"), viewer.get("longitude"), candidate.get("latitude"), candidate.get("longitude"))
-        same_area = int(
+        same_area = bool(
             (viewer.get("city") and viewer.get("city") == candidate.get("city")) or
             (viewer.get("neighborhood") and viewer.get("neighborhood") == candidate.get("neighborhood"))
         )

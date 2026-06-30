@@ -3,3 +3,4 @@ instance/
 app/static/uploads/
 .env
 *.db
+venv/
