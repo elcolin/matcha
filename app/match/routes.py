@@ -1,6 +1,6 @@
 import math
 
-from flask import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, request
 
 from app.db import query_all
 from app.profile.routes import _profile_payload
@@ -162,31 +162,3 @@ def advanced_search():
 @login_required
 def advanced_search_alias():
     return advanced_search()
-
-
-@match_bp.route("/browse-view", methods=["GET"])
-@login_required
-def browse_view():
-    items = _candidate_profiles(g.current_user["id"])
-    items = _apply_filters(items, request.args)
-    items = _apply_sort(items, request.args)
-    for item in items:
-        item["name"] = f"{item['first_name']} {item['last_name']}".strip()
-        item["image"] = item["photos"][0]["url"] if item["photos"] else "https://placehold.co/600x400?text=Matcha"
-        item["interests"] = item.get("tags", [])
-    return render_template("browse.html", profiles=items, args=request.args)
-
-
-@match_bp.route("/search-view", methods=["GET"])
-@login_required
-def search_view():
-    items = []
-    if request.args:
-        items = _candidate_profiles(g.current_user["id"])
-        items = _apply_filters(items, request.args)
-        items = _apply_sort(items, request.args)
-        for item in items:
-            item["name"] = f"{item['first_name']} {item['last_name']}".strip()
-            item["image"] = item["photos"][0]["url"] if item["photos"] else "https://placehold.co/600x400?text=Matcha"
-            item["interests"] = item.get("tags", [])
-    return render_template("search.html", profiles=items, args=request.args, searched=bool(request.args))

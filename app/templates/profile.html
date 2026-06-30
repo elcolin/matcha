@@ -1,7 +1,63 @@
-{% extends "base.html" %}
-{% block title %}{{ profile.name }} - Matcha{% endblock %}
-{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Profile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Your CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <style>
+        .profile-card {
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .profile-img {
+            width: 100%;
+            height: 350px;
+            object-fit: cover;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background: #ffe3e3;
+            margin: 3px;
+            font-size: 0.85rem;
+        }
+
+        .action-btn {
+            border-radius: 30px;
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+
+<!-- NAV -->
+<nav class="navbar navbar-light bg-white shadow-sm">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{{ url_for('main.home') }}">❤️ Matcha Flock</a>
+        <div>
+            {% if current_user %}
+                <a href="/notifications" class="btn btn-outline-secondary btn-sm me-2">
+                    Notifications <span id="notif-badge" class="badge bg-danger">{{ unread_notifications }}</span>
+                </a>
+                <a href="/logout" class="btn btn-danger btn-sm me-2">Logout</a>
+            {% endif %}
+            <a href="{{ url_for('main.home') }}" class="btn btn-outline-danger btn-sm">Back to Home</a>
+        </div>
+    </div>
+</nav>
+
+<!-- PROFILE SECTION -->
 <div class="container py-5">
 
     <div class="row justify-content-center">
@@ -19,10 +75,7 @@
                 <div class="card-body p-4">
 
                     <!-- NAME + AGE -->
-                    <h2 class="fw-bold mb-0">
-                        {{ profile.name }}, {{ profile.age }}
-                        {% if profile.online %}<span class="badge bg-success">Online</span>{% endif %}
-                    </h2>
+                    <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
                     <p class="text-muted">{{ profile.city }}</p>
 
                     <!-- BIO -->
@@ -35,36 +88,12 @@
                         {% endfor %}
                     </div>
 
-                    {% if current_user and current_user.id != profile.id %}
                     <!-- ACTION BUTTONS -->
-                    <div class="d-flex gap-2 flex-wrap">
-                        {% if profile.liked_by_me %}
-                        <form method="post" action="{{ url_for('profile.unlike_profile_form', id=profile.id) }}">
-                            <button type="submit" class="btn btn-outline-danger action-btn">Unlike</button>
-                        </form>
-                        {% else %}
-                        <form method="post" action="{{ url_for('profile.like_profile', id=profile.id) }}">
-                            <button type="submit" class="btn btn-danger action-btn">Like</button>
-                        </form>
-                        {% endif %}
-
-                        {% if profile.connected %}
-                        <a href="{{ url_for('chat.chat_view', user_id=profile.id) }}" class="btn btn-outline-dark action-btn">Message</a>
-                        {% endif %}
-
-                        <form method="post" action="{{ url_for('profile.report_profile', id=profile.id) }}">
-                            <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
-                        </form>
-
-                        <form method="post" action="{{ url_for('profile.block_profile', id=profile.id) }}">
-                            <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
-                        </form>
+                    <div class="d-flex gap-2">
+                        <a href="#" class="btn btn-danger action-btn">💖 Match</a>
+                        <a href="#" class="btn btn-outline-dark action-btn">💬 Message</a>
+                        <a href="#" class="btn btn-outline-secondary action-btn">🚩 Report</a>
                     </div>
-
-                    {% if profile.liked_me %}
-                    <p class="text-muted mt-2 mb-0"><small>This person liked you!</small></p>
-                    {% endif %}
-                    {% endif %}
 
                 </div>
             </div>
@@ -73,4 +102,25 @@
     </div>
 </div>
 
-{% endblock %}
+<!-- FOOTER -->
+<footer class="text-center py-4 text-muted">
+    <small>© 2026 Matcha Flock</small>
+</footer>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% if current_user %}
+<script>
+  const eventSource = new EventSource('/chat/stream');
+  eventSource.addEventListener('heartbeat', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const badge = document.getElementById('notif-badge');
+      if (badge) badge.textContent = data.unread_notifications ?? 0;
+    } catch (_) {}
+  });
+</script>
+{% endif %}
+
+</body>
+</html>
