@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Browse - Matcha{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4">Browse suggestions</h1>
+
+    <form method="get" action="{{ url_for('match.browse_view') }}" class="row g-2 mb-4 align-items-end">
+        <div class="col-auto">
+            <label class="form-label" for="sort_by">Sort by</label>
+            <select class="form-select" id="sort_by" name="sort_by">
+                <option value="smart" {% if args.get('sort_by', 'smart') == 'smart' %}selected{% endif %}>Smart match</option>
+                <option value="age" {% if args.get('sort_by') == 'age' %}selected{% endif %}>Age</option>
+                <option value="location" {% if args.get('sort_by') == 'location' %}selected{% endif %}>Location</option>
+                <option value="popularity" {% if args.get('sort_by') == 'popularity' %}selected{% endif %}>Popularity</option>
+                <option value="tags" {% if args.get('sort_by') == 'tags' %}selected{% endif %}>Shared tags</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="order">Order</label>
+            <select class="form-select" id="order" name="order">
+                <option value="desc" {% if args.get('order', 'desc') == 'desc' %}selected{% endif %}>Descending</option>
+                <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="min_age">Min age</label>
+            <input class="form-control" type="number" id="min_age" name="min_age" value="{{ args.get('min_age', '') }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="max_age">Max age</label>
+            <input class="form-control" type="number" id="max_age" name="max_age" value="{{ args.get('max_age', '') }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="city">City</label>
+            <input class="form-control" type="text" id="city" name="city" value="{{ args.get('city', '') }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label" for="tags">Tags</label>
+            <input class="form-control" type="text" id="tags" name="tags" value="{{ args.get('tags', '') }}" placeholder="music, hiking">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-danger">Apply</button>
+        </div>
+    </form>
+
+    <div class="row g-4">
+        {% for profile in profiles %}
+        <div class="col-md-4">
+            <div class="card profile-card shadow-sm">
+                <img src="{{ profile.image }}" class="card-img-top">
+                <div class="card-body text-center">
+                    <h5>{{ profile.name }}, {{ profile.age }}</h5>
+                    <p class="text-muted mb-1">{{ profile.city }}</p>
+                    <p class="mb-2">
+                        {% if profile.distance_km is not none %}
+                        <span class="badge bg-secondary">{{ "%.1f"|format(profile.distance_km) }} km</span>
+                        {% endif %}
+                        <span class="badge bg-info text-dark">{{ profile.shared_tags_count }} shared tags</span>
+                        <span class="badge bg-warning text-dark">{{ profile.popularity_score }} pts</span>
+                    </p>
+                    <a href="{{ url_for('profile.detail', id=profile.id) }}" class="btn btn-outline-danger btn-sm">View</a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted">No suggestions match these filters yet.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

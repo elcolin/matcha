@@ -1,7 +1,7 @@
 import json
 import time
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, Response, g, jsonify, render_template, request, stream_with_context
 
 from app.db import execute, query_all, query_one
 from app.security import build_notification_payload
@@ -15,6 +15,38 @@ HEARTBEAT_INTERVAL_SECONDS = 10
 @login_required
 def chat_home():
     return "Chat API is ready"
+
+
+def _matches_for(user_id):
+    """Users with a mutual like (i.e. a match) with the given user."""
+    rows = query_all(
+        """
+        SELECT u.id, u.username, u.first_name, u.last_name
+        FROM likes a
+        JOIN likes b ON a.from_user_id = b.to_user_id AND a.to_user_id = b.from_user_id
+        JOIN users u ON u.id = a.to_user_id
+        WHERE a.from_user_id = ?
+        ORDER BY u.first_name ASC
+        """,
+        (user_id,),
+    )
+    return [dict(r) for r in rows]
+
+
+@chat_bp.route("/view", methods=["GET"], defaults={"user_id": None})
+@chat_bp.route("/view/<int:user_id>", methods=["GET"])
+@login_required
+def chat_view(user_id):
+    current = g.current_user["id"]
+    matches = _matches_for(current)
+
+    active = None
+    if user_id is not None:
+        active = next((m for m in matches if m["id"] == user_id), None)
+        if active is None:
+            raise APIError("Chat is available only for connected users", 403)
+
+    return render_template("chat.html", matches=matches, active=active)
 
 
 @chat_bp.route("/<int:user_id>", methods=["GET"])

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Chat - Matcha{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4">Chat</h1>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="list-group">
+                {% for m in matches %}
+                <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
+                   class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
+                    {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
+                </a>
+                {% else %}
+                <p class="text-muted">No matches yet. Like someone back to start chatting!</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            {% if active %}
+            <div class="card shadow-sm">
+                <div class="card-header">Conversation with {{ active.first_name }} {{ active.last_name }}</div>
+                <div class="card-body" id="messages" style="height: 400px; overflow-y: auto;"></div>
+                <div class="card-footer">
+                    <form id="send-form" class="d-flex gap-2">
+                        <input type="text" class="form-control" id="message-input" placeholder="Type a message..." required>
+                        <button type="submit" class="btn btn-danger">Send</button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted">Select a match on the left to open the conversation.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if active %}
+<script>
+  const currentUserId = {{ current_user.id }};
+  const otherUserId = {{ active.id }};
+  const messagesEl = document.getElementById('messages');
+  const form = document.getElementById('send-form');
+  const input = document.getElementById('message-input');
+
+  function renderMessage(msg) {
+    const mine = msg.sender_id === currentUserId;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mb-2 ' + (mine ? 'text-end' : 'text-start');
+    const bubble = document.createElement('span');
+    bubble.className = 'badge ' + (mine ? 'bg-danger' : 'bg-secondary');
+    bubble.style.whiteSpace = 'normal';
+    bubble.textContent = msg.content;
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // Load history once on page load.
+  fetch(`/chat/${otherUserId}`)
+    .then(r => r.json())
+    .then(history => history.forEach(renderMessage));
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const content = input.value.trim();
+    if (!content) return;
+    fetch(`/chat/${otherUserId}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    }).then(() => {
+      renderMessage({ sender_id: currentUserId, content });
+      input.value = '';
+    });
+  });
+
+  // Live updates via Server-Sent Events. The connection auto-reconnects on
+  // its own if dropped (default EventSource behavior), so no manual retry needed.
+  const stream = new EventSource('/chat/stream');
+  stream.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.sender_id === otherUserId) {
+      renderMessage(msg);
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

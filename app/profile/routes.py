@@ -1,7 +1,10 @@
 import json
+import os
+import secrets
 from datetime import datetime, timezone
 
-from flask import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
+from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
 from app.security import build_notification_payload
@@ -12,6 +15,7 @@ profile_bp = Blueprint("profile", __name__)
 
 ALLOWED_GENDERS = {"male", "female", "non_binary"}
 ALLOWED_PREFS = {"straight", "gay", "bisexual"}
+ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
 def _profile_payload(user_id: int):
@@ -82,32 +86,26 @@ def _ensure_primary_photo(user_id: int):
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
 
-@profile_bp.route("/profile/me", methods=["GET", "PUT"])
-@login_required
-def profile_me():
-    user_id = g.current_user["id"]
-
-    if request.method == "GET":
-        payload = _profile_payload(user_id)
-        return jsonify(payload)
-
-    data = request.get_json(silent=True) or request.form
-
-    gender = data.get("gender")
-    pref = data.get("sexual_preference")
+def _update_profile(user_id: int, data):
+    """Shared update logic used by both the JSON PUT /profile/me route and the
+    plain HTML form on /profile/edit."""
+    gender = data.get("gender") or None
+    pref = data.get("sexual_preference") or None
     if gender is not None and gender not in ALLOWED_GENDERS:
         raise APIError("Invalid gender", 400)
     if pref is not None and pref not in ALLOWED_PREFS:
         raise APIError("Invalid sexual_preference", 400)
 
     consent = data.get("location_consent_gps")
-    if consent is not None:
-        consent = bool(consent)
+    if consent is not None and consent != "":
+        consent = bool(consent) if not isinstance(consent, str) else consent.lower() in ("1", "true", "on", "yes")
+    else:
+        consent = None
 
-    city = data.get("city")
-    neighborhood = data.get("neighborhood")
-    latitude = data.get("latitude")
-    longitude = data.get("longitude")
+    city = data.get("city") or None
+    neighborhood = data.get("neighborhood") or None
+    latitude = data.get("latitude") or None
+    longitude = data.get("longitude") or None
 
     if consent is False and not (city or neighborhood):
         raise APIError("Manual location (city or neighborhood) is required when GPS consent is refused", 400)
@@ -136,7 +134,7 @@ def profile_me():
             latitude,
             longitude,
             int(consent) if consent is not None else None,
-            data.get("age"),
+            data.get("age") or None,
             user_id,
         ),
     )
@@ -150,10 +148,13 @@ def profile_me():
             email = COALESCE(?, email)
         WHERE id = ?
         """,
-        (data.get("first_name"), data.get("last_name"), data.get("email"), user_id),
+        (data.get("first_name") or None, data.get("last_name") or None, data.get("email") or None, user_id),
     )
 
     tags = data.get("tags")
+    if isinstance(tags, str):
+        # Beginner-friendly: a comma-separated text input instead of a tag widget.
+        tags = [t for t in tags.split(",")]
     if isinstance(tags, list):
         execute("DELETE FROM user_tags WHERE user_id = ?", (user_id,))
         clean_tags = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
@@ -166,26 +167,89 @@ def profile_me():
             for tag in tag_rows:
                 execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
 
-    return jsonify(_profile_payload(user_id))
+    return _profile_payload(user_id)
+
+
+@profile_bp.route("/profile/me", methods=["GET", "PUT"])
+@login_required
+def profile_me():
+    user_id = g.current_user["id"]
+
+    if request.method == "GET":
+        payload = _profile_payload(user_id)
+        return jsonify(payload)
+
+    data = request.get_json(silent=True) or request.form
+    payload = _update_profile(user_id, data)
+    return jsonify(payload)
+
+
+@profile_bp.route("/profile/edit", methods=["GET"])
+@login_required
+def edit_profile():
+    profile = _profile_payload(g.current_user["id"])
+    return render_template("profile_edit.html", profile=profile)
+
+
+@profile_bp.route("/profile/edit", methods=["POST"])
+@login_required
+def edit_profile_submit():
+    user_id = g.current_user["id"]
+    try:
+        _update_profile(user_id, request.form)
+    except APIError as err:
+        flash(err.message, "error")
+        return redirect(url_for("profile.edit_profile"))
+
+    flash("Profile updated.", "success")
+    return redirect(url_for("profile.edit_profile"))
+
+
+def _save_uploaded_photo(file_storage):
+    filename = secure_filename(file_storage.filename or "")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if not filename or ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise APIError("Photo must be one of: png, jpg, jpeg, gif, webp", 400)
+
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    os.makedirs(upload_folder, exist_ok=True)
+
+    unique_name = f"{secrets.token_hex(8)}.{ext}"
+    file_storage.save(os.path.join(upload_folder, unique_name))
+
+    return f"/static/uploads/{unique_name}"
 
 
 @profile_bp.route("/profile/me/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
+    is_form = request.get_json(silent=True) is None and not request.is_json
 
     if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        url = str(data.get("url", "")).strip()
-        as_primary = bool(data.get("is_profile_photo", False))
-
-        if not url:
-            raise APIError("url is required", 400)
+        photo_file = request.files.get("photo")
+        if not photo_file or not photo_file.filename:
+            if is_form:
+                flash("Please choose a photo to upload", "error")
+                return redirect(url_for("profile.edit_profile"))
+            raise APIError("photo file is required", 400)
 
         count = query_one("SELECT COUNT(*) AS c FROM photos WHERE user_id = ?", (user_id,))
         if count and count["c"] >= 5:
+            if is_form:
+                flash("You can upload up to 5 photos", "error")
+                return redirect(url_for("profile.edit_profile"))
             raise APIError("You can upload up to 5 photos", 400)
 
+        try:
+            url = _save_uploaded_photo(photo_file)
+        except APIError as err:
+            if is_form:
+                flash(err.message, "error")
+                return redirect(url_for("profile.edit_profile"))
+            raise
+
+        as_primary = bool(request.form.get("is_profile_photo"))
         if as_primary:
             execute("UPDATE photos SET is_profile_photo = 0 WHERE user_id = ?", (user_id,))
 
@@ -199,12 +263,35 @@ def profile_photos():
         data = request.get_json(silent=True) or request.form
         photo_id = data.get("photo_id")
         if not photo_id:
+            if is_form:
+                flash("photo_id is required", "error")
+                return redirect(url_for("profile.edit_profile"))
             raise APIError("photo_id is required", 400)
 
         execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
         _ensure_primary_photo(user_id)
 
+    if is_form:
+        flash("Photo updated.", "success")
+        return redirect(url_for("profile.edit_profile"))
+
     return jsonify(_profile_payload(user_id)["photos"])
+
+
+@profile_bp.route("/profile/me/photos/delete", methods=["POST"])
+@login_required
+def profile_photos_delete_form():
+    """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
+    user_id = g.current_user["id"]
+    photo_id = request.form.get("photo_id")
+    if not photo_id:
+        flash("photo_id is required", "error")
+        return redirect(url_for("profile.edit_profile"))
+
+    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
+    _ensure_primary_photo(user_id)
+    flash("Photo deleted.", "success")
+    return redirect(url_for("profile.edit_profile"))
 
 
 @profile_bp.route("/profile/<int:id>", methods=["GET"])
@@ -265,6 +352,8 @@ def like_profile(id):
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
+    is_form = request.get_json(silent=True) is None and not request.is_json
+
     if request.method == "POST":
         execute("INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)", (current, id))
         add_notification(id, "like_received", build_notification_payload(from_user_id=current))
@@ -279,11 +368,25 @@ def like_profile(id):
 
     update_popularity(id)
 
+    if is_form:
+        return redirect(url_for("profile.detail", id=id))
+
     return jsonify({
         "liked_by_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))),
         "liked_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, current))),
         "connected": is_match(current, id),
     })
+
+
+@profile_bp.route("/profile/<int:id>/unlike", methods=["POST"])
+@login_required
+def unlike_profile_form(id):
+    """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
+    current = g.current_user["id"]
+    execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
+    add_notification(id, "unliked", build_notification_payload(from_user_id=current))
+    update_popularity(id)
+    return redirect(url_for("profile.detail", id=id))
 
 
 @profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
@@ -297,6 +400,10 @@ def block_profile(id):
         execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
     else:
         execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+
+    is_form = request.get_json(silent=True) is None and not request.is_json
+    if is_form:
+        return redirect(url_for("match.browse_view"))
 
     return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
@@ -313,6 +420,12 @@ def report_profile(id):
         (current, id),
     )
     update_popularity(id)
+
+    is_form = request.get_json(silent=True) is None and not request.is_json
+    if is_form:
+        flash("Profile reported.", "success")
+        return redirect(url_for("profile.detail", id=id))
+
     return jsonify({"reported": True})
 
 
@@ -351,15 +464,11 @@ def liked_by_me():
     return jsonify([dict(r) for r in rows])
 
 
-@profile_bp.route("/notifications", methods=["GET"])
-@login_required
-def list_notifications():
-    current = g.current_user["id"]
-    unread_only = request.args.get("unread") == "1"
+def _notifications_for(user_id, unread_only=False):
     if unread_only:
-        rows = query_all("SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100", (current,))
+        rows = query_all("SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100", (user_id,))
     else:
-        rows = query_all("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100", (current,))
+        rows = query_all("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100", (user_id,))
 
     payload = []
     for row in rows:
@@ -370,8 +479,23 @@ def list_notifications():
             except Exception:
                 pass
         payload.append(item)
+    return payload
 
-    return jsonify(payload)
+
+@profile_bp.route("/notifications", methods=["GET"])
+@login_required
+def list_notifications():
+    current = g.current_user["id"]
+    unread_only = request.args.get("unread") == "1"
+    return jsonify(_notifications_for(current, unread_only))
+
+
+@profile_bp.route("/notifications/view", methods=["GET"])
+@login_required
+def notifications_view():
+    current = g.current_user["id"]
+    notifications = _notifications_for(current)
+    return render_template("notifications.html", notifications=notifications)
 
 
 @profile_bp.route("/notifications/unread-count", methods=["GET"])
@@ -387,4 +511,9 @@ def unread_notifications_count():
 def mark_notifications_read():
     current = g.current_user["id"]
     execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (current,))
+
+    is_form = request.get_json(silent=True) is None and not request.is_json
+    if is_form:
+        return redirect(url_for("profile.notifications_view"))
+
     return jsonify({"ok": True})

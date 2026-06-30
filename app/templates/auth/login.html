@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Login - Matcha{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h3 mb-4 text-center">Login</h1>
+                    <form method="post" action="{{ url_for('auth.login') }}">
+                        <div class="mb-3">
+                            <label class="form-label" for="username">Username</label>
+                            <input class="form-control" type="text" id="username" name="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="password">Password</label>
+                            <input class="form-control" type="password" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-danger w-100">Login</button>
+                    </form>
+                    <p class="text-center mt-3 mb-1">
+                        <a href="{{ url_for('auth.request_password_reset') }}">Forgot your password?</a>
+                    </p>
+                    <p class="text-center mb-0">
+                        No account yet? <a href="{{ url_for('auth.register') }}">Register</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
