@@ -2,6 +2,10 @@
 {% block title %}Matcha — Login{% endblock %}
 {% block content %}
 
+{% if request.args.get('verified') %}
+  <div class="alert alert-success">Email verified! You can now log in.</div>
+{% endif %}
+
   <div class="d-flex justify-content-center pt-5">
     <div class="card shadow-sm" style="width:360px">
       <div class="card-body p-4">
