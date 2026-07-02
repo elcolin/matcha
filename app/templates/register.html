@@ -1,0 +1,55 @@
+{% extends "components/base.html" %}
+{% block title %}Matcha — Register{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-center pt-4 pb-4">
+  <div class="card shadow-sm" style="width:480px">
+    <div class="card-body p-4">
+      <h5 class="card-title mb-4">Create Account</h5>
+
+      {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      {% if success %}
+        <div class="alert alert-success">{{ success }}</div>
+      {% endif %}
+
+      <form method="POST" action="/register">
+        <div class="row g-3 mb-3">
+          <div class="col">
+            <label class="form-label">First Name</label>
+            <input name="first_name" class="form-control" type="text" required />
+          </div>
+          <div class="col">
+            <label class="form-label">Last Name</label>
+            <input name="last_name" class="form-control" type="text" required />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input name="username" class="form-control" type="text" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input name="email" class="form-control" type="email" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <div class="form-text mb-1">Min 8 chars, one capital, one special character.</div>
+          <input name="password" class="form-control" type="password" required />
+        </div>
+        <div class="mb-4">
+          <label class="form-label">Confirm Password</label>
+          <input name="confirm" class="form-control" type="password" required />
+        </div>
+        <button type="submit" class="btn btn-danger w-100 mb-3">Create Account</button>
+      </form>
+
+      <div class="text-center">
+        <a href="/login" class="btn btn-link btn-sm text-muted">Already have an account? Login</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
