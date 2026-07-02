@@ -60,7 +60,7 @@ def chat_view(user_id):
         active = next((m for m in matches if m["id"] == user_id), None)
         if active is None:
             raise APIError("Chat is available only for connected users", 403)
-
+        
     return render_template("chat.html", matches=matches, active=active)
 
 
@@ -73,6 +73,7 @@ def conversation(user_id):
     if is_blocked_between(current, user_id):
         raise APIError("Chat unavailable", 403)
 
+    print(current, user_id)
     rows = query_all(
         """
         SELECT id, sender_id, receiver_id, content, created_at, read_at
@@ -83,12 +84,6 @@ def conversation(user_id):
         """,
         (current, user_id, user_id, current),
     )
-
-    execute(
-        "UPDATE messages SET read_at = CURRENT_TIMESTAMP WHERE sender_id = ? AND receiver_id = ? AND read_at IS NULL",
-        (user_id, current),
-    )
-
     return jsonify([dict(r) for r in rows])
 
 
@@ -110,54 +105,19 @@ def send_message(user_id):
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
         (current, user_id, content),
     )
-
-    # Skip the notification if the recipient already has this conversation
-    # open — they'll see the message live via the SSE "message" event anyway.
-    if not _is_viewing_chat(user_id, current):
-        add_notification(user_id, "new_message", build_notification_payload(from_user_id=current, preview=content[:100]))
-
     return jsonify({"sent": True})
-
-
-@chat_bp.route("/<int:user_id>/presence", methods=["POST"])
-@login_required
-def ping_presence(user_id):
-    """Called periodically by the chat page while a conversation is open."""
-    current = g.current_user["id"]
-    if not is_match(current, user_id):
-        raise APIError("Chat is available only for connected users", 403)
-
-    execute(
-        """
-        INSERT INTO chat_presence (user_id, partner_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id) DO UPDATE SET partner_id = excluded.partner_id, updated_at = excluded.updated_at
-        """,
-        (current, user_id),
-    )
-    return jsonify({"ok": True})
 
 
 @chat_bp.route("/stream", methods=["GET"])
 @login_required
 def stream_events():
     current = g.current_user["id"]
+    since = request.args.get("since", 0, type=int)
 
     def generator():
-        last_notif_id = 0
-        last_message_id = 0
-        polls = 0
-
+        last_message_id = since
         try:
             while True:
-                notifications = query_all(
-                    "SELECT id, type, payload, created_at FROM notifications WHERE user_id = ? AND id > ? ORDER BY id ASC",
-                    (current, last_notif_id),
-                )
-                if notifications:
-                    for notif in notifications:
-                        last_notif_id = notif["id"]
-                        yield f"event: notification\ndata: {json.dumps(dict(notif))}\n\n"
-
                 messages = query_all(
                     "SELECT id, sender_id, content, created_at FROM messages WHERE receiver_id = ? AND id > ? ORDER BY id ASC",
                     (current, last_message_id),
@@ -166,15 +126,6 @@ def stream_events():
                     for msg in messages:
                         last_message_id = msg["id"]
                         yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
-
-                # Only recompute/emit the unread-count heartbeat periodically,
-                # so messages/notifications are picked up almost instantly
-                # (every POLL_INTERVAL_SECONDS) without hammering the DB.
-                if polls % HEARTBEAT_EVERY_N_POLLS == 0:
-                    unread = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
-                    yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': unread['c'] if unread else 0})}\n\n"
-
-                polls += 1
                 time.sleep(POLL_INTERVAL_SECONDS)
         except GeneratorExit:
             return

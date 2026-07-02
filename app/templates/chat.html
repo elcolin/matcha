@@ -47,7 +47,16 @@
   const form = document.getElementById('send-form');
   const input = document.getElementById('message-input');
 
+  const renderedMessageIds = new Set();
+  let lastMessageId = 0;
+
   function renderMessage(msg) {
+    if (msg.id !== undefined) {
+      if (renderedMessageIds.has(msg.id)) return;
+      renderedMessageIds.add(msg.id);
+      if (msg.id > lastMessageId) lastMessageId = msg.id;
+    }
+
     const mine = msg.sender_id === currentUserId;
     const wrapper = document.createElement('div');
     wrapper.className = 'mb-2 ' + (mine ? 'text-end' : 'text-start');
@@ -61,9 +70,11 @@
   }
 
   // Load history once on page load.
-  fetch(`/chat/${otherUserId}`)
-    .then(r => r.json())
-    .then(history => history.forEach(renderMessage));
+  async function loadMessages() {
+      const response = await fetch(`/chat/${otherUserId}`)
+      const rows = await response.json()
+      rows.forEach(renderMessage)
+  }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -78,26 +89,18 @@
       input.value = '';
     });
   });
-
-  // Live updates via Server-Sent Events. The connection auto-reconnects on
-  // its own if dropped (default EventSource behavior), so no manual retry needed.
-  const stream = new EventSource('/chat/stream');
-  stream.addEventListener('message', (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.sender_id === otherUserId) {
-      renderMessage(msg);
-    }
-  });
-
-  // Tell the server we're actively viewing this conversation, so the other
-  // user doesn't get a "new message" notification while we're looking at it
-  // (the message still appears live above either way).
-  function pingPresence() {
-    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+  
+  function connectStream() {
+    const stream = new EventSource(`/chat/stream?since=${lastMessageId}`);
+    stream.addEventListener('message', (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.sender_id === otherUserId) {
+        renderMessage(msg);
+      }
+    });
   }
-  pingPresence();
-  const presenceInterval = setInterval(pingPresence, 8000);
-  window.addEventListener('pagehide', () => clearInterval(presenceInterval));
+
+  loadMessages().then(connectStream);
 </script>
 {% endif %}
 {% endblock %}
