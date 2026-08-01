@@ -65,9 +65,26 @@
 
                     <!-- ACTION BUTTONS -->
                     <div class="d-flex gap-2">
-                        <a href="#" class="btn btn-danger action-btn">💖 Match</a>
-                        <a href="#" class="btn btn-outline-dark action-btn">💬 Message</a>
-                        <a href="#" class="btn btn-outline-secondary action-btn">🚩 Report</a>
+                        <!-- <a href="#" class="btn btn-danger action-btn">💖 Match</a> -->
+                        {% if profile.liked_by_me %}
+                        <form method="post" action="{{ url_for('profile.unlike_profile_form', id=profile.id) }}">
+                            <button type="submit" class="btn btn-outline-danger action-btn">Unlike</button>
+                        </form>
+                        {% if profile.liked_me %}
+                        <a href="{{ url_for('chat.chat_view', user_id=profile.id) }}" class="btn btn-outline-dark action-btn">Message</a>
+                        {% endif %}
+                        {% else %}
+                        <form method="post" action="{{ url_for('profile.like_profile', id=profile.id) }}">
+                            <button type="submit" class="btn btn-danger action-btn">Like</button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="{{ url_for('profile.report_profile', id=profile.id) }}">
+                            <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
+                        </form>
+
+                        <form method="post" action="{{ url_for('profile.block_profile', id=profile.id) }}">
+                            <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
+                        </form>
                     </div>
 
                 </div>
