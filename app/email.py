@@ -8,10 +8,10 @@ def send_email(to, subject, html):
     msg["From"] = os.getenv("SMTP_USERNAME")
     msg["To"] = to
 
-    with smtplib.SMTP(os.getenv("SMTP_SERVER"), int(os.getenv("SMTP_PORT", 587))) as server:
+    with smtplib.SMTP() as server:
+        server.connect(os.getenv("SMTP_SERVER"), int(os.getenv("SMTP_PORT", 587)))
         server.ehlo()
         server.starttls()
-        server.ehlo()
         server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
         server.send_message(msg)
         
