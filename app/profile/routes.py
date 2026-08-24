@@ -235,6 +235,9 @@ def detail(id):
         profile["liked_by_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (viewer["id"], id)))
         profile["liked_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, viewer["id"])))
         profile["connected"] = is_match(viewer["id"], id)
+        profile["blocked_by_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (id, viewer["id"])))
+        profile["blocked_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (viewer["id"], id)))
+        # Load block info here
 
     if request.args.get("format") == "json":
         profile.pop("email", None)
@@ -258,8 +261,8 @@ def like_profile(id):
     if current == id:
         raise APIError("Cannot like yourself", 400)
 
-    if is_blocked_between(current, id):
-        raise APIError("Interaction unavailable", 403)
+    # if is_blocked_between(current, id):
+    #     raise APIError("Interaction unavailable", 403)
 
     my_photo = query_one("SELECT 1 FROM photos WHERE user_id = ? AND is_profile_photo = 1", (current,))
     if not my_photo:
