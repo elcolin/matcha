@@ -1,79 +1,59 @@
 {% extends "components/base.html" %}
 {% block title %}Matcha - Find Your Match{% endblock %}
 {% block content %}
-
-<!-- HERO -->
-<section class="hero">
-    <div class="container">
-        <h1>Welcome to Matcha Flock 🐦</h1>
-        <p>
-          The only dating app where swiping right means… winging it right.
-        </p>
-
-        <!-- <a class="btn btn-warning"> -->
-        <a href="/register" class="btn btn-light cta-btn fw-semibold mt-3">
-          Find Your Feathered Match
-        </a>
-        <!-- <p class="lead mt-3">
+    <!-- HERO -->
+    <section class="hero">
+        <div class="container">
+            <h1>Welcome to Matcha Flock 🐦</h1>
+            <p>The only dating app where swiping right means… winging it right.</p>
+            <!-- <a class="btn btn-warning"> -->
+            <a href="/register" class="btn btn-light cta-btn fw-semibold mt-3">Find Your Feathered Match</a>
+            <!-- <p class="lead mt-3">
             Meet new people, connect instantly, and build real relationships.
         </p>
 
         <a href="/register" class="btn btn-light cta-btn fw-semibold mt-3">
             Get Started
         </a> -->
-    </div>
-</section>
-
-<!-- HOW IT WORKS -->
-<section class="py-5 text-center">
-    <div class="container">
-        <h2 class="mb-4">How it works</h2>
-
-        <div class="row">
-            <div class="col-md-4">
-                <h5>1. Create profile</h5>
-                <p>Sign up and build your personality profile.</p>
-            </div>
-
-            <div class="col-md-4">
-                <h5>2. Discover people</h5>
-                <p>Browse profiles based on your interests.</p>
-            </div>
-
-            <div class="col-md-4">
-                <h5>3. Match & chat</h5>
-                <p>Start conversations with mutual matches.</p>
+        </div>
+    </section>
+    <!-- HOW IT WORKS -->
+    <section class="py-5 text-center">
+        <div class="container">
+            <h2 class="mb-4">How it works</h2>
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>1. Create profile</h5>
+                    <p>Sign up and build your personality profile.</p>
+                </div>
+                <div class="col-md-4">
+                    <h5>2. Discover people</h5>
+                    <p>Browse profiles based on your interests.</p>
+                </div>
+                <div class="col-md-4">
+                    <h5>3. Match & chat</h5>
+                    <p>Start conversations with mutual matches.</p>
+                </div>
             </div>
         </div>
-    </div>
-</section>
-
-<!-- PROFILES -->
-<section class="bg-light py-5">
-    <div class="container">
-
-        <h2 class="text-center mb-4">
-            People near you
-        </h2>
-
-        <div class="row g-4">
-
-            {% for profile in profiles %}
-                {% include 'components/profile_card.html' %}
-            {% endfor %}
-
+    </section>
+    <!-- PROFILES -->
+    <section class="bg-light py-5">
+        <div class="container">
+            <h2 class="text-center mb-4">People near you</h2>
+            <div class="row g-4">
+                {% for profile in profiles %}
+                    {% include 'components/profile_card.html' %}
+                {% endfor %}
+            </div>
         </div>
-
-    </div>
-</section>
-
-<!-- CTA -->
-<section class="text-center py-5">
-    <div class="container">
-        <h2>Ready to meet someone?</h2>
-        <p class="text-muted">Join and start matching today.</p>
-        <a href="/register" class="btn btn-danger btn-lg cta-btn">Create Account</a>
-    </div>
-</section>
-
+    </section>
+    <!-- CTA -->
+    <section class="text-center py-5">
+        <div class="container">
+            <h2>Ready to meet someone?</h2>
+            <p class="text-muted">Join and start matching today.</p>
+            <a href="/register" class="btn btn-danger btn-lg cta-btn">Create Account</a>
+        </div>
+    </section>
 {% endblock %}
