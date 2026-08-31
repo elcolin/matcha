@@ -268,8 +268,7 @@ def like_profile(id):
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
-    is_form = request.get_json(silent=True) is None and not request.is_json
-
+    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
     if request.method == "POST":
         execute("INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)", (current, id))
         add_notification(id, "like_received", build_notification_payload(from_user_id=current))
