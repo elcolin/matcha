@@ -332,7 +332,12 @@ def block_profile(id):
         raise APIError("Cannot block yourself", 400)
 
     execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
-
+    execute(
+        "DELETE FROM likes WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
+        (current, id, id, current),
+    )
+    update_popularity(id)
+    update_popularity(current)
     is_form = request.get_json(silent=True) is None and not request.is_json
     if is_form:
         return redirect(url_for("profile.detail", id=id))
