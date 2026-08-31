@@ -2,4 +2,3 @@ __pycache__/
 instance/
 .env
 .DS_Store
-.pytest_cache/
