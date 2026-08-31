@@ -218,8 +218,6 @@ def detail(id):
     can_interact = bool(viewer and viewer["id"] != id)
     profile["can_interact"] = can_interact
     if can_interact:
-        if is_blocked_between(viewer["id"], id):
-            raise APIError("Profile unavailable", 403)
 
         recent_view = query_one(
             """
