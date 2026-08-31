@@ -299,9 +299,10 @@ def like_profile(id):
 def unlike_profile_form(id):
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
     current = g.current_user["id"]
-    execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
-    add_notification(id, "unliked", build_notification_payload(from_user_id=current))
-    update_popularity(id)
+    cur = execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
+    if cur.rowcount:
+        add_notification(id, "unliked", build_notification_payload(from_user_id=current))
+        update_popularity(id)
     return redirect(url_for("profile.detail", id=id))
 
 
