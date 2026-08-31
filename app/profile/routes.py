@@ -313,7 +313,6 @@ def unblock_profile(id):
         raise APIError("Cannot unblock yourself", 400)
 
     execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
-    unlike_profile_form(id)
 
     is_form = request.get_json(silent=True) is None and not request.is_json
     if is_form:
