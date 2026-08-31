@@ -216,8 +216,8 @@ def detail(id):
 
     viewer = g.get("current_user")
     if viewer and viewer["id"] != id:
-        # if is_blocked_between(viewer["id"], id):
-            # raise APIError("Profile unavailable", 403)
+        if is_blocked_between(viewer["id"], id):
+            raise APIError("Profile unavailable", 403)
 
         recent_view = query_one(
             """
@@ -261,8 +261,8 @@ def like_profile(id):
     if current == id:
         raise APIError("Cannot like yourself", 400)
 
-    # if is_blocked_between(current, id):
-    #     raise APIError("Interaction unavailable", 403)
+    if is_blocked_between(current, id):
+        raise APIError("Interaction unavailable", 403)
 
     my_photo = query_one("SELECT 1 FROM photos WHERE user_id = ? AND is_profile_photo = 1", (current,))
     if not my_photo:
