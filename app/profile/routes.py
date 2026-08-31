@@ -305,18 +305,15 @@ def unlike_profile_form(id):
     return redirect(url_for("profile.detail", id=id))
 
 
-@profile_bp.route("/profile/<int:id>/unblock", methods=["POST", "DELETE"])
+@profile_bp.route("/profile/<int:id>/unblock", methods=["POST"])
 @login_required
 def unblock_profile(id):
     current = g.current_user["id"]
     if current == id:
         raise APIError("Cannot unblock yourself", 400)
 
-    # if request.method == "POST":
-    #     execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
-    # else:
-    
     execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+    unlike_profile_form(id)
 
     is_form = request.get_json(silent=True) is None and not request.is_json
     if is_form:
@@ -326,17 +323,14 @@ def unblock_profile(id):
     return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
 
-@profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
+@profile_bp.route("/profile/<int:id>/block", methods=["POST"])
 @login_required
 def block_profile(id):
     current = g.current_user["id"]
     if current == id:
         raise APIError("Cannot block yourself", 400)
 
-    if request.method == "POST":
-        execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
-    else:
-        execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+    execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
 
     is_form = request.get_json(silent=True) is None and not request.is_json
     if is_form:
