@@ -54,7 +54,7 @@
                         <!-- ACTION BUTTONS -->
                         <div class="d-flex gap-2">
                             <!-- <a href="#" class="btn btn-danger action-btn">💖 Match</a> -->
-                            {% if not profile.blocked_me and not profile.blocked_by_me %}
+                            {% if profile.can_interact and not profile.blocked_me and not profile.blocked_by_me %}
                                 {% if profile.liked_by_me %}
                                     <form method="post"
                                           action="{{ url_for('profile.unlike_profile_form', id=profile.id) }}">
@@ -71,20 +71,22 @@
                                     </form>
                                 {% endif %}
                             {% endif %}
-                            <form method="post"
-                                  action="{{ url_for('profile.report_profile', id=profile.id) }}">
-                                <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
-                            </form>
-                            {% if not profile.blocked_by_me %}
+                            {% if profile.can_interact %}
                                 <form method="post"
-                                      action="{{ url_for('profile.block_profile', id=profile.id) }}">
-                                    <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
+                                      action="{{ url_for('profile.report_profile', id=profile.id) }}">
+                                    <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
                                 </form>
-                            {% else %}
-                                <form method="post"
-                                      action="{{ url_for('profile.unblock_profile', id=profile.id) }}">
-                                    <button type="submit" class="btn btn-outline-secondary action-btn">Unblock</button>
-                                </form>
+                                {% if not profile.blocked_by_me %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.block_profile', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
+                                    </form>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.unblock_profile', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-outline-secondary action-btn">Unblock</button>
+                                    </form>
+                                {% endif %}
                             {% endif %}
                         </div>
                     </div>

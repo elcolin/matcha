@@ -215,7 +215,9 @@ def detail(id):
         return "Profile not found", 404
 
     viewer = g.get("current_user")
-    if viewer and viewer["id"] != id:
+    can_interact = bool(viewer and viewer["id"] != id)
+    profile["can_interact"] = can_interact
+    if can_interact:
         if is_blocked_between(viewer["id"], id):
             raise APIError("Profile unavailable", 403)
 
@@ -237,7 +239,6 @@ def detail(id):
         profile["connected"] = is_match(viewer["id"], id)
         profile["blocked_by_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (viewer["id"], id)))
         profile["blocked_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (id, viewer["id"])))
-        # Load block info here
 
     if request.args.get("format") == "json":
         profile.pop("email", None)
@@ -322,12 +323,16 @@ def unblock_profile(id):
     return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
 
-@profile_bp.route("/profile/<int:id>/block", methods=["POST"])
+@profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
 @login_required
 def block_profile(id):
     current = g.current_user["id"]
     if current == id:
         raise APIError("Cannot block yourself", 400)
+
+    if request.method == "DELETE":
+        execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+        return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
     execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
     execute(
@@ -336,7 +341,7 @@ def block_profile(id):
     )
     update_popularity(id)
     update_popularity(current)
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
