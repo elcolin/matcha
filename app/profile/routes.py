@@ -322,7 +322,7 @@ def unblock_profile(id):
     return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
 
-@profile_bp.route("/profile/<int:id>/block", methods=["POST"])
+@profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
 @login_required
 def block_profile(id):
     current = g.current_user["id"]
