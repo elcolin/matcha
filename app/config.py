@@ -14,3 +14,29 @@ class Config:
     PASSWORD_RESET_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TTL_SECONDS", "3600"))
     LOGIN_RATE_WINDOW_MINUTES = int(os.getenv("LOGIN_RATE_WINDOW_MINUTES", "15"))
     LOGIN_RATE_MAX_FAILS = int(os.getenv("LOGIN_RATE_MAX_FAILS", "6"))
+
+class UserConfig(Config):
+    GENDERS = ["female", "male", "non-binary", "other"]
+    SEXUAL_PREFERENCES = ["everyone", "men", "women"]
+    TAGS = {
+        "early-bird": 1,
+        "night-owl": 2,
+        "nesting": 3,
+        "sky-lover": 4,
+        "long-flights": 5,
+        "seed-snacks": 6,
+        "city-percher": 7,
+        "forest-walker": 8,
+        "songbird": 9,
+        "shiny-things": 10,
+        "migration": 11,
+        "birdwatching": 12,
+        "cozy-nest": 13,
+        "coffee": 14,
+        "sunsets": 15,
+        "dancing": 16,
+        "travel": 17,
+        "photography": 18,
+        "music": 19,
+        "outdoors": 20,
+    }
