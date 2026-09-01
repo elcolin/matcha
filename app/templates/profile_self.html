@@ -1,0 +1,199 @@
+{% extends "components/base.html" %}
+{% block title %}{{ profile.name }} - My Profile - Matcha{% endblock %}
+{% block extra_head %}
+    <style>
+        .profile-card {
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .profile-img {
+            width: 100%;
+            height: 350px;
+            object-fit: cover;
+        }
+
+        .profile-img-wrapper {
+            position: relative;
+        }
+
+        .change-photo-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.85rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background: #ffe3e3;
+            margin: 3px;
+            font-size: 0.85rem;
+        }
+
+        .tag-removable {
+            cursor: pointer;
+        }
+
+        .tag-removable .remove-x {
+            margin-left: 6px;
+            font-weight: bold;
+        }
+
+        .action-btn {
+            border-radius: 30px;
+            padding: 10px 20px;
+        }
+
+        .edit-fields {
+            display: none;
+        }
+
+        .view-mode.editing .edit-fields {
+            display: block;
+        }
+
+        .view-mode.editing .display-fields {
+            display: none;
+        }
+    </style>
+{% endblock %}
+{% block content %}
+    <!-- SELF PROFILE SECTION -->
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card profile-card shadow view-mode" id="profileCard">
+                    <!-- IMAGE -->
+                    <div class="profile-img-wrapper">
+                        <img src="{{ profile.image }}"
+                             class="profile-img"
+                             id="profileImgPreview"
+                             alt="{{ profile.name }} profile picture">
+                        <form method="post"
+                              enctype="multipart/form-data"
+                              action="{{ url_for('profile.update_photo') }}"
+                              id="photoForm">
+                            <label for="photoInput"
+                                   class="btn btn-light change-photo-btn shadow-sm mb-0">
+                                📷 Change photo
+                            </label>
+                            <input type="file"
+                                   id="photoInput"
+                                   name="photo"
+                                   accept="image/*"
+                                   class="d-none"
+                                   onchange="document.getElementById('photoForm').submit();">
+                        </form>
+                    </div>
+                    <!-- BODY -->
+                    <div class="card-body p-4">
+                        <!-- EDIT FORM (wraps everything editable) -->
+                        <form method="post" action="{{ url_for('profile.update_profile') }}">
+                            <!-- NAME + AGE + CITY -->
+                            <div class="display-fields">
+                                <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
+                                <p class="text-muted">{{ profile.city }}</p>
+                            </div>
+                            <div class="edit-fields mb-3">
+                                <label class="form-label small text-muted">Name</label>
+                                <input type="text"
+                                       name="name"
+                                       class="form-control mb-2"
+                                       value="{{ profile.name }}">
+                                <div class="row">
+                                    <div class="col">
+                                        <label class="form-label small text-muted">Age</label>
+                                        <input type="number"
+                                               name="age"
+                                               class="form-control"
+                                               value="{{ profile.age }}">
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label small text-muted">City</label>
+                                        <input type="text"
+                                               name="city"
+                                               class="form-control"
+                                               value="{{ profile.city }}">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- BIO -->
+                            <div class="display-fields">
+                                <p>{{ profile.bio }}</p>
+                            </div>
+                            <div class="edit-fields mb-3">
+                                <label class="form-label small text-muted">Bio</label>
+                                <textarea name="bio" rows="3" class="form-control">{{ profile.bio }}</textarea>
+                            </div>
+
+                            <!-- TAGS -->
+                            <div class="display-fields mb-3">
+                                {% for interest in profile.interests %}
+                                    <span class="tag">{{ interest }}</span>
+                                {% endfor %}
+                            </div>
+                            <div class="edit-fields mb-3">
+                                <label class="form-label small text-muted">Interests (comma separated)</label>
+                                <input type="text"
+                                       name="interests"
+                                       class="form-control"
+                                       value="{{ profile.interests | join(', ') }}">
+                            </div>
+
+                            <!-- ACTION BUTTONS -->
+                            <div class="d-flex gap-2">
+                                <button type="button"
+                                        class="btn btn-outline-dark action-btn display-fields"
+                                        onclick="toggleEdit(true)">
+                                    ✏️ Edit profile
+                                </button>
+                                <button type="submit" class="btn btn-danger action-btn edit-fields">
+                                    Save changes
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-secondary action-btn edit-fields"
+                                        onclick="toggleEdit(false)">
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+
+                        <hr class="my-4">
+
+                        <!-- ACCOUNT SETTINGS LINKS -->
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ url_for('profile.change_password') }}"
+                               class="btn btn-outline-secondary action-btn btn-sm">🔒 Change password</a>
+                            <a href="{{ url_for('profile.privacy_settings') }}"
+                               class="btn btn-outline-secondary action-btn btn-sm">👁️ Privacy settings</a>
+                            <form method="post"
+                                  action="{{ url_for('profile.deactivate_account') }}"
+                                  onsubmit="return confirm('Are you sure you want to deactivate your account?');">
+                                <button type="submit" class="btn btn-outline-secondary action-btn btn-sm">
+                                    🚫 Deactivate account
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleEdit(state) {
+            const card = document.getElementById('profileCard');
+            if (state) {
+                card.classList.add('editing');
+            } else {
+                card.classList.remove('editing');
+            }
+        }
+    </script>
+{% endblock %}
