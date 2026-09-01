@@ -1,6 +1,5 @@
 {% extends "components/base.html" %}
 {% block title %}{{ profile.name }} - Matcha{% endblock %}
-
 {% block extra_head %}
     <style>
         .profile-card {
@@ -29,52 +28,70 @@
         }
     </style>
 {% endblock %}
-
 {% block content %}
-
-<!-- PROFILE SECTION -->
-<div class="container py-5">
-
-    <div class="row justify-content-center">
-
-        <div class="col-md-8">
-
-            <div class="card profile-card shadow">
-
-                <!-- IMAGE -->
-                <img src="{{ profile.image }}"
-                     class="profile-img"
-                     alt="{{ profile.name }} profile picture">
-
-                <!-- BODY -->
-                <div class="card-body p-4">
-
-                    <!-- NAME + AGE -->
-                    <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
-                    <p class="text-muted">{{ profile.city }}</p>
-
-                    <!-- BIO -->
-                    <p>{{ profile.bio }}</p>
-
-                    <!-- TAGS -->
-                    <div class="mb-3">
-                        {% for interest in profile.interests %}
-                            <span class="tag">{{ interest }}</span>
-                        {% endfor %}
+    <!-- PROFILE SECTION -->
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card profile-card shadow">
+                    <!-- IMAGE -->
+                    <img src="{{ profile.image }}"
+                         class="profile-img"
+                         alt="{{ profile.name }} profile picture">
+                    <!-- BODY -->
+                    <div class="card-body p-4">
+                        <!-- NAME + AGE -->
+                        <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
+                        <p class="text-muted">{{ profile.city }}</p>
+                        <!-- BIO -->
+                        <p>{{ profile.bio }}</p>
+                        <!-- TAGS -->
+                        <div class="mb-3">
+                            {% for interest in profile.interests %}
+                                <span class="tag">{{ interest }}</span>
+                            {% endfor %}
+                        </div>
+                        <!-- ACTION BUTTONS -->
+                        <div class="d-flex gap-2">
+                            <!-- <a href="#" class="btn btn-danger action-btn">💖 Match</a> -->
+                            {% if profile.can_interact and not profile.blocked_me and not profile.blocked_by_me %}
+                                {% if profile.liked_by_me %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.unlike_profile_form', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-outline-danger action-btn">Unlike</button>
+                                    </form>
+                                    {% if profile.liked_me %}
+                                        <a href="{{ url_for('chat.chat_view', user_id=profile.id) }}"
+                                           class="btn btn-outline-dark action-btn">Message</a>
+                                    {% endif %}
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.like_profile', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-danger action-btn">Like</button>
+                                    </form>
+                                {% endif %}
+                            {% endif %}
+                            {% if profile.can_interact %}
+                                <form method="post"
+                                      action="{{ url_for('profile.report_profile', id=profile.id) }}">
+                                    <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
+                                </form>
+                                {% if not profile.blocked_by_me %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.block_profile', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
+                                    </form>
+                                {% else %}
+                                    <form method="post"
+                                          action="{{ url_for('profile.unblock_profile', id=profile.id) }}">
+                                        <button type="submit" class="btn btn-outline-secondary action-btn">Unblock</button>
+                                    </form>
+                                {% endif %}
+                            {% endif %}
+                        </div>
                     </div>
-
-                    <!-- ACTION BUTTONS -->
-                    <div class="d-flex gap-2">
-                        <a href="#" class="btn btn-danger action-btn">💖 Match</a>
-                        <a href="#" class="btn btn-outline-dark action-btn">💬 Message</a>
-                        <a href="#" class="btn btn-outline-secondary action-btn">🚩 Report</a>
-                    </div>
-
                 </div>
             </div>
-
         </div>
     </div>
-</div>
-
 {% endblock %}
