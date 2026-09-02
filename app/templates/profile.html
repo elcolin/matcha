@@ -26,6 +26,54 @@
             border-radius: 30px;
             padding: 10px 20px;
         }
+
+        .profile-img-wrapper {
+            position: relative;
+        }
+
+        .change-photo-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.85rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background: #ffe3e3;
+            margin: 3px;
+            font-size: 0.85rem;
+        }
+
+        .tag-removable {
+            cursor: pointer;
+        }
+
+        .tag-removable .remove-x {
+            margin-left: 6px;
+            font-weight: bold;
+        }
+
+        .action-btn {
+            border-radius: 30px;
+            padding: 10px 20px;
+        }
+
+        .edit-fields {
+            display: none;
+        }
+
+        .profile-card.editing .edit-fields {
+            display: block;
+        }
+
+        .profile-card.editing .display-fields {
+            display: none;
+        }
     </style>
 {% endblock %}
 {% block content %}
@@ -88,10 +136,15 @@
                                         <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
                                     </form>
                                 {% elif profile.is_self %}
-                                    <form method="post"
-                                          action="{{ url_for('profile.unblock_profile', id=profile.id) }}">
-                                        <button type="submit" class="btn btn-outline-secondary action-btn">Edit</button>
-                                    </form>
+                                    <div class="card profile-card" id="profileCard">
+                                    <button type="button"
+                                            class="btn btn-outline-dark action-btn display-fields"
+                                            onclick="toggleEdit(true)">✏️ Edit profile</button>
+                                    <button type="submit" class="btn btn-danger action-btn edit-fields">Save changes</button>
+                                    <button type="button"
+                                            class="btn btn-outline-secondary action-btn edit-fields"
+                                            onclick="toggleEdit(false)">Cancel</button>
+                                    </div>
                                 {% endif %}
                             {% endif %}
                         </div>
@@ -100,4 +153,10 @@
             </div>
         </div>
     </div>
+    <script>
+        function toggleEdit(state) {
+            const card = document.getElementById('profileCard');
+            card.classList.toggle('editing', state);
+        }
+    </script>
 {% endblock %}
