@@ -390,8 +390,21 @@ def profile_photos():
                 flash("photo_id is required", "error")
                 return redirect(url_for("profile.edit_profile"))
             raise APIError("photo_id is required", 400)
-
+        row = query_one(
+            "SELECT url FROM photos WHERE id = ? AND user_id = ?",
+            (photo_id, user_id),
+        )
         execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
+        if row and row.get("url", "").startswith("/static/uploads/"):
+            try:
+                os.remove(
+                    os.path.join(
+                        current_app.config["UPLOAD_FOLDER"],
+                        os.path.basename(row["url"]),
+                    )
+                )
+            except FileNotFoundError:
+                pass
         _ensure_primary_photo(user_id)
 
     if is_form:
