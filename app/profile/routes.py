@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from flask import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request, redirect, url_for, flash
 
 from app.db import execute, query_all, query_one
 from app.security import build_notification_payload
@@ -215,9 +215,9 @@ def detail(id):
         return "Profile not found", 404
 
     viewer = g.get("current_user")
-    if viewer and viewer["id"] != id:
-        if is_blocked_between(viewer["id"], id):
-            raise APIError("Profile unavailable", 403)
+    can_interact = bool(viewer and viewer["id"] != id)
+    profile["can_interact"] = can_interact
+    if can_interact:
 
         recent_view = query_one(
             """
@@ -235,6 +235,8 @@ def detail(id):
         profile["liked_by_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (viewer["id"], id)))
         profile["liked_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, viewer["id"])))
         profile["connected"] = is_match(viewer["id"], id)
+        profile["blocked_by_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (viewer["id"], id)))
+        profile["blocked_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (id, viewer["id"])))
 
     if request.args.get("format") == "json":
         profile.pop("email", None)
@@ -265,6 +267,7 @@ def like_profile(id):
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
+    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
     if request.method == "POST":
         execute("INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)", (current, id))
         add_notification(id, "like_received", build_notification_payload(from_user_id=current))
@@ -279,11 +282,43 @@ def like_profile(id):
 
     update_popularity(id)
 
+    if is_form:
+        return redirect(url_for("profile.detail", id=id))
+
     return jsonify({
         "liked_by_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))),
         "liked_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, current))),
         "connected": is_match(current, id),
     })
+
+
+@profile_bp.route("/profile/<int:id>/unlike", methods=["POST"])
+@login_required
+def unlike_profile_form(id):
+    """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
+    current = g.current_user["id"]
+    cur = execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
+    if cur.rowcount:
+        add_notification(id, "unliked", build_notification_payload(from_user_id=current))
+        update_popularity(id)
+    return redirect(url_for("profile.detail", id=id))
+
+
+@profile_bp.route("/profile/<int:id>/unblock", methods=["POST"])
+@login_required
+def unblock_profile(id):
+    current = g.current_user["id"]
+    if current == id:
+        raise APIError("Cannot unblock yourself", 400)
+
+    execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+
+    is_form = request.get_json(silent=True) is None and not request.is_json
+    if is_form:
+        return redirect(url_for("profile.detail", id=id))
+
+
+    return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
 
 @profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
@@ -293,10 +328,21 @@ def block_profile(id):
     if current == id:
         raise APIError("Cannot block yourself", 400)
 
-    if request.method == "POST":
-        execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
-    else:
+    if request.method == "DELETE":
         execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
+        return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
+
+    execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
+    execute(
+        "DELETE FROM likes WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
+        (current, id, id, current),
+    )
+    update_popularity(id)
+    update_popularity(current)
+    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
+    if is_form:
+        return redirect(url_for("profile.detail", id=id))
+
 
     return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
 
@@ -313,6 +359,10 @@ def report_profile(id):
         (current, id),
     )
     update_popularity(id)
+    is_form = request.get_json(silent=True) is None and not request.is_json
+    if is_form:
+        flash("Profile reported.", "success")
+        return redirect(url_for("profile.detail", id=id))
     return jsonify({"reported": True})
 
 

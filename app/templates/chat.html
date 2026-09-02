@@ -1,46 +1,50 @@
 {% extends "components/base.html" %}
 {% block title %}Chat - Matcha{% endblock %}
 {% block content %}
-<div class="container py-5">
-    <h1 class="mb-4">Chat</h1>
-
-    <div class="row">
-        <div class="col-md-4">
-            <div class="list-group">
-                {% for m in matches %}
-                <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
-                   class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
-                    {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
-                </a>
-                {% else %}
-                <p class="text-muted">No matches yet. Like someone back to start chatting!</p>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="col-md-8">
-            {% if active %}
-            <div class="card shadow-sm">
-                <div class="card-header">Conversation with {{ active.first_name }} {{ active.last_name }}</div>
-                <div class="card-body" id="messages" style="height: 400px; overflow-y: auto;"></div>
-                <div class="card-footer">
-                    <form id="send-form" class="d-flex gap-2">
-                        <input type="text" class="form-control" id="message-input" placeholder="Type a message..." required>
-                        <button type="submit" class="btn btn-danger">Send</button>
-                    </form>
+    <div class="container py-5">
+        <h1 class="mb-4">Chat</h1>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="list-group">
+                    {% for m in matches %}
+                        <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
+                           class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
+                            {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
+                        </a>
+                    {% else %}
+                        <p class="text-muted">No matches yet. Like someone back to start chatting!</p>
+                    {% endfor %}
                 </div>
             </div>
-            {% else %}
-            <p class="text-muted">Select a match on the left to open the conversation.</p>
-            {% endif %}
+            <div class="col-md-8">
+                {% if active %}
+                    <div class="card shadow-sm">
+                        <div class="card-header">Conversation with {{ active.first_name }} {{ active.last_name }}</div>
+                        <div class="card-body"
+                             id="messages"
+                             style="height: 400px;
+                                    overflow-y: auto"></div>
+                        <div class="card-footer">
+                            <form id="send-form" class="d-flex gap-2">
+                                <input type="text"
+                                       class="form-control"
+                                       id="message-input"
+                                       placeholder="Type a message..."
+                                       required>
+                                <button type="submit" class="btn btn-danger">Send</button>
+                            </form>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Select a match on the left to open the conversation.</p>
+                {% endif %}
+            </div>
         </div>
     </div>
-</div>
 {% endblock %}
-
 {% block extra_scripts %}
-{% if active %}
-<script>
+    {% if active %}
+        <script>
   const currentUserId = {{ current_user.id }};
   const otherUserId = {{ active.id }};
   const messagesEl = document.getElementById('messages');
@@ -101,6 +105,6 @@
   }
 
   loadMessages().then(connectStream);
-</script>
-{% endif %}
+        </script>
+    {% endif %}
 {% endblock %}
