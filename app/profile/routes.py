@@ -318,8 +318,9 @@ def _update_profile(user_id: int, data):
 def edit_profile_submit():
     user_id = g.current_user["id"]
     try:
-        _update_profile(user_id, request.form)
-    except APIError as err:
+        form_data = request.form.to_dict(flat=True)
+        form_data.setdefault("location_consent_gps", "0")
+        _update_profile(user_id, form_data)
         flash(err.message, "error")
         return redirect(url_for("profile.edit_profile"))
 
