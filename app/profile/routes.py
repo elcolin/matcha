@@ -1,11 +1,32 @@
 import json
+import secrets
+import os
 from datetime import datetime, timezone
 
-from flask import Blueprint, g, jsonify, render_template, request, redirect, url_for, flash
+from flask import (
+    Blueprint,
+    g,
+    jsonify,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    current_app,
+)
+
+from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
 from app.security import build_notification_payload
-from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required, update_popularity
+from app.utils import (
+    APIError,
+    add_notification,
+    is_blocked_between,
+    is_match,
+    login_required,
+    update_popularity,
+)
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -48,7 +69,9 @@ def _profile_payload(user_id: int):
 
     online = False
     if row["online_until"]:
-        online = datetime.fromisoformat(row["online_until"]) > datetime.now(timezone.utc)
+        online = datetime.fromisoformat(row["online_until"]) > datetime.now(
+            timezone.utc
+        )
 
     return {
         "id": row["id"],
@@ -73,11 +96,15 @@ def _profile_payload(user_id: int):
 
 
 def _ensure_primary_photo(user_id: int):
-    profile_photo = query_one("SELECT id FROM photos WHERE user_id = ? AND is_profile_photo = 1", (user_id,))
+    profile_photo = query_one(
+        "SELECT id FROM photos WHERE user_id = ? AND is_profile_photo = 1", (user_id,)
+    )
     if profile_photo:
         return
 
-    first = query_one("SELECT id FROM photos WHERE user_id = ? ORDER BY id ASC LIMIT 1", (user_id,))
+    first = query_one(
+        "SELECT id FROM photos WHERE user_id = ? ORDER BY id ASC LIMIT 1", (user_id,)
+    )
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
@@ -110,7 +137,10 @@ def profile_me():
     longitude = data.get("longitude")
 
     if consent is False and not (city or neighborhood):
-        raise APIError("Manual location (city or neighborhood) is required when GPS consent is refused", 400)
+        raise APIError(
+            "Manual location (city or neighborhood) is required when GPS consent is refused",
+            400,
+        )
 
     execute(
         """
@@ -162,9 +192,14 @@ def profile_me():
 
         if clean_tags:
             placeholders = ",".join(["?"] * len(clean_tags))
-            tag_rows = query_all(f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags))
+            tag_rows = query_all(
+                f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags)
+            )
             for tag in tag_rows:
-                execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
+                execute(
+                    "INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)",
+                    (user_id, tag["id"]),
+                )
 
     return jsonify(_profile_payload(user_id))
 
@@ -188,7 +223,11 @@ def _update_profile(user_id: int, data):
 
     consent = data.get("location_consent_gps")
     if consent is not None and consent != "":
-        consent = bool(consent) if not isinstance(consent, str) else consent.lower() in ("1", "true", "on", "yes")
+        consent = (
+            bool(consent)
+            if not isinstance(consent, str)
+            else consent.lower() in ("1", "true", "on", "yes")
+        )
     else:
         consent = None
 
@@ -198,7 +237,10 @@ def _update_profile(user_id: int, data):
     longitude = data.get("longitude") or None
 
     if consent is False and not (city or neighborhood):
-        raise APIError("Manual location (city or neighborhood) is required when GPS consent is refused", 400)
+        raise APIError(
+            "Manual location (city or neighborhood) is required when GPS consent is refused",
+            400,
+        )
 
     execute(
         """
@@ -238,7 +280,12 @@ def _update_profile(user_id: int, data):
             email = COALESCE(?, email)
         WHERE id = ?
         """,
-        (data.get("first_name") or None, data.get("last_name") or None, data.get("email") or None, user_id),
+        (
+            data.get("first_name") or None,
+            data.get("last_name") or None,
+            data.get("email") or None,
+            user_id,
+        ),
     )
 
     tags = data.get("tags")
@@ -253,9 +300,14 @@ def _update_profile(user_id: int, data):
 
         if clean_tags:
             placeholders = ",".join(["?"] * len(clean_tags))
-            tag_rows = query_all(f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags))
+            tag_rows = query_all(
+                f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags)
+            )
             for tag in tag_rows:
-                execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
+                execute(
+                    "INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)",
+                    (user_id, tag["id"]),
+                )
 
     return _profile_payload(user_id)
 
@@ -273,24 +325,53 @@ def edit_profile_submit():
     flash("Profile updated.", "success")
     return redirect(url_for("profile.edit_profile"))
 
+ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+def _save_uploaded_photo(file_storage):
+    filename = secure_filename(file_storage.filename or "")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if not filename or ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise APIError("Photo must be one of: png, jpg, jpeg, gif, webp", 400)
+
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    os.makedirs(upload_folder, exist_ok=True)
+
+    unique_name = f"{secrets.token_hex(8)}.{ext}"
+    file_storage.save(os.path.join(upload_folder, unique_name))
+
+    return f"/static/uploads/{unique_name}"
+
 
 @profile_bp.route("/profile/me/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
+    is_form = request.get_json(silent=True) is None and not request.is_json
 
     if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        url = str(data.get("url", "")).strip()
-        as_primary = bool(data.get("is_profile_photo", False))
-
-        if not url:
-            raise APIError("url is required", 400)
+        photo_file = request.files.get("photo")
+        if not photo_file or not photo_file.filename:
+            if is_form:
+                flash("Please choose a photo to upload", "error")
+                return redirect(url_for("profile.edit_profile"))
+            raise APIError("photo file is required", 400)
 
         count = query_one("SELECT COUNT(*) AS c FROM photos WHERE user_id = ?", (user_id,))
         if count and count["c"] >= 5:
+            if is_form:
+                flash("You can upload up to 5 photos", "error")
+                return redirect(url_for("profile.edit_profile"))
             raise APIError("You can upload up to 5 photos", 400)
 
+        try:
+            url = _save_uploaded_photo(photo_file)
+        except APIError as err:
+            if is_form:
+                flash(err.message, "error")
+                return redirect(url_for("profile.edit_profile"))
+            raise
+
+        as_primary = bool(request.form.get("is_profile_photo"))
         if as_primary:
             execute("UPDATE photos SET is_profile_photo = 0 WHERE user_id = ?", (user_id,))
 
@@ -304,12 +385,35 @@ def profile_photos():
         data = request.get_json(silent=True) or request.form
         photo_id = data.get("photo_id")
         if not photo_id:
+            if is_form:
+                flash("photo_id is required", "error")
+                return redirect(url_for("profile.edit_profile"))
             raise APIError("photo_id is required", 400)
 
         execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
         _ensure_primary_photo(user_id)
 
+    if is_form:
+        flash("Photo updated.", "success")
+        return redirect(url_for("profile.edit_profile"))
+
     return jsonify(_profile_payload(user_id)["photos"])
+
+
+@profile_bp.route("/profile/me/photos/delete", methods=["POST"])
+@login_required
+def profile_photos_delete_form():
+    """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
+    user_id = g.current_user["id"]
+    photo_id = request.form.get("photo_id")
+    if not photo_id:
+        flash("photo_id is required", "error")
+        return redirect(url_for("profile.edit_profile"))
+
+    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
+    _ensure_primary_photo(user_id)
+    flash("Photo deleted.", "success")
+    return redirect(url_for("profile.edit_profile"))
 
 
 @profile_bp.route("/profile/<int:id>", methods=["GET"])
@@ -335,15 +439,40 @@ def detail(id):
             (viewer["id"], id),
         )
         if not recent_view:
-            execute("INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)", (viewer["id"], id))
-        add_notification(id, "profile_view", build_notification_payload(viewer_id=viewer["id"]))
+            execute(
+                "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+                (viewer["id"], id),
+            )
+        add_notification(
+            id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
+        )
         update_popularity(id)
 
-        profile["liked_by_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (viewer["id"], id)))
-        profile["liked_me"] = bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, viewer["id"])))
+        profile["liked_by_me"] = bool(
+            query_one(
+                "SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?",
+                (viewer["id"], id),
+            )
+        )
+        profile["liked_me"] = bool(
+            query_one(
+                "SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?",
+                (id, viewer["id"]),
+            )
+        )
         profile["connected"] = is_match(viewer["id"], id)
-        profile["blocked_by_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (viewer["id"], id)))
-        profile["blocked_me"] = bool(query_one("SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)", (id, viewer["id"])))
+        profile["blocked_by_me"] = bool(
+            query_one(
+                "SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)",
+                (viewer["id"], id),
+            )
+        )
+        profile["blocked_me"] = bool(
+            query_one(
+                "SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?)",
+                (id, viewer["id"]),
+            )
+        )
 
     if request.args.get("format") == "json":
         profile.pop("email", None)
@@ -370,33 +499,63 @@ def like_profile(id):
     if is_blocked_between(current, id):
         raise APIError("Interaction unavailable", 403)
 
-    my_photo = query_one("SELECT 1 FROM photos WHERE user_id = ? AND is_profile_photo = 1", (current,))
+    my_photo = query_one(
+        "SELECT 1 FROM photos WHERE user_id = ? AND is_profile_photo = 1", (current,)
+    )
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
-    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
+    is_form = request.mimetype in (
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+    )
     if request.method == "POST":
-        execute("INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)", (current, id))
-        add_notification(id, "like_received", build_notification_payload(from_user_id=current))
+        execute(
+            "INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
+            (current, id),
+        )
+        add_notification(
+            id, "like_received", build_notification_payload(from_user_id=current)
+        )
 
         if is_match(current, id):
-            add_notification(id, "new_match", build_notification_payload(user_id=current))
-            add_notification(current, "new_match", build_notification_payload(user_id=id))
+            add_notification(
+                id, "new_match", build_notification_payload(user_id=current)
+            )
+            add_notification(
+                current, "new_match", build_notification_payload(user_id=id)
+            )
 
     else:
-        execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
-        add_notification(id, "unliked", build_notification_payload(from_user_id=current))
+        execute(
+            "DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id)
+        )
+        add_notification(
+            id, "unliked", build_notification_payload(from_user_id=current)
+        )
 
     update_popularity(id)
 
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
-    return jsonify({
-        "liked_by_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))),
-        "liked_me": bool(query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (id, current))),
-        "connected": is_match(current, id),
-    })
+    return jsonify(
+        {
+            "liked_by_me": bool(
+                query_one(
+                    "SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?",
+                    (current, id),
+                )
+            ),
+            "liked_me": bool(
+                query_one(
+                    "SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?",
+                    (id, current),
+                )
+            ),
+            "connected": is_match(current, id),
+        }
+    )
 
 
 @profile_bp.route("/profile/<int:id>/unlike", methods=["POST"])
@@ -404,9 +563,13 @@ def like_profile(id):
 def unlike_profile_form(id):
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
     current = g.current_user["id"]
-    cur = execute("DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id))
+    cur = execute(
+        "DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id)
+    )
     if cur.rowcount:
-        add_notification(id, "unliked", build_notification_payload(from_user_id=current))
+        add_notification(
+            id, "unliked", build_notification_payload(from_user_id=current)
+        )
         update_popularity(id)
     return redirect(url_for("profile.detail", id=id))
 
@@ -424,8 +587,16 @@ def unblock_profile(id):
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
-
-    return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
+    return jsonify(
+        {
+            "blocked": bool(
+                query_one(
+                    "SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    (current, id),
+                )
+            )
+        }
+    )
 
 
 @profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
@@ -436,22 +607,47 @@ def block_profile(id):
         raise APIError("Cannot block yourself", 400)
 
     if request.method == "DELETE":
-        execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
-        return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
+        execute(
+            "DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)
+        )
+        return jsonify(
+            {
+                "blocked": bool(
+                    query_one(
+                        "SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                        (current, id),
+                    )
+                )
+            }
+        )
 
-    execute("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (current, id))
+    execute(
+        "INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)",
+        (current, id),
+    )
     execute(
         "DELETE FROM likes WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
         (current, id, id, current),
     )
     update_popularity(id)
     update_popularity(current)
-    is_form = request.mimetype in ("application/x-www-form-urlencoded", "multipart/form-data")
+    is_form = request.mimetype in (
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+    )
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
-
-    return jsonify({"blocked": bool(query_one("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id)))})
+    return jsonify(
+        {
+            "blocked": bool(
+                query_one(
+                    "SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    (current, id),
+                )
+            )
+        }
+    )
 
 
 @profile_bp.route("/profile/<int:id>/report", methods=["POST"])
@@ -514,9 +710,15 @@ def list_notifications():
     current = g.current_user["id"]
     unread_only = request.args.get("unread") == "1"
     if unread_only:
-        rows = query_all("SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100", (current,))
+        rows = query_all(
+            "SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100",
+            (current,),
+        )
     else:
-        rows = query_all("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100", (current,))
+        rows = query_all(
+            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100",
+            (current,),
+        )
 
     payload = []
     for row in rows:
@@ -535,7 +737,10 @@ def list_notifications():
 @login_required
 def unread_notifications_count():
     current = g.current_user["id"]
-    row = query_one("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0", (current,))
+    row = query_one(
+        "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0",
+        (current,),
+    )
     return jsonify({"unread": row["c"] if row else 0})
 
 

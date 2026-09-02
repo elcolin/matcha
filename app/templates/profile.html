@@ -62,18 +62,6 @@
             border-radius: 30px;
             padding: 10px 20px;
         }
-
-        .edit-fields {
-            display: none;
-        }
-
-        .profile-card.editing .edit-fields {
-            display: block;
-        }
-
-        .profile-card.editing .display-fields {
-            display: none;
-        }
     </style>
 {% endblock %}
 {% block content %}
@@ -148,10 +136,4 @@
             </div>
         </div>
     </div>
-    <script>
-        function toggleEdit(state) {
-            const card = document.getElementById('profileCard');
-            card.classList.toggle('editing', state);
-        }
-    </script>
 {% endblock %}
