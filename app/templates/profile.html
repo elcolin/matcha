@@ -137,13 +137,8 @@
                                     </form>
                                 {% elif profile.is_self %}
                                     <div class="card profile-card" id="profileCard">
-                                    <button type="button"
-                                            class="btn btn-outline-dark action-btn display-fields"
-                                            onclick="toggleEdit(true)">✏️ Edit profile</button>
-                                    <button type="submit" class="btn btn-danger action-btn edit-fields">Save changes</button>
-                                    <button type="button"
-                                            class="btn btn-outline-secondary action-btn edit-fields"
-                                            onclick="toggleEdit(false)">Cancel</button>
+                                        <a href="{{ url_for('profile.edit_profile', id=profile.id) }}"
+                                           class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
                                     </div>
                                 {% endif %}
                             {% endif %}

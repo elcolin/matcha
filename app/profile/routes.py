@@ -169,6 +169,111 @@ def profile_me():
     return jsonify(_profile_payload(user_id))
 
 
+@profile_bp.route("/profile/edit", methods=["GET"])
+@login_required
+def edit_profile():
+    profile = _profile_payload(g.current_user["id"])
+    return render_template("profile_edit.html", profile=profile)
+
+
+def _update_profile(user_id: int, data):
+    """Shared update logic used by both the JSON PUT /profile/me route and the
+    plain HTML form on /profile/edit."""
+    gender = data.get("gender") or None
+    pref = data.get("sexual_preference") or None
+    if gender is not None and gender not in ALLOWED_GENDERS:
+        raise APIError("Invalid gender", 400)
+    if pref is not None and pref not in ALLOWED_PREFS:
+        raise APIError("Invalid sexual_preference", 400)
+
+    consent = data.get("location_consent_gps")
+    if consent is not None and consent != "":
+        consent = bool(consent) if not isinstance(consent, str) else consent.lower() in ("1", "true", "on", "yes")
+    else:
+        consent = None
+
+    city = data.get("city") or None
+    neighborhood = data.get("neighborhood") or None
+    latitude = data.get("latitude") or None
+    longitude = data.get("longitude") or None
+
+    if consent is False and not (city or neighborhood):
+        raise APIError("Manual location (city or neighborhood) is required when GPS consent is refused", 400)
+
+    execute(
+        """
+        UPDATE profiles
+        SET gender = COALESCE(?, gender),
+            sexual_preference = COALESCE(?, sexual_preference),
+            bio = COALESCE(?, bio),
+            city = COALESCE(?, city),
+            neighborhood = COALESCE(?, neighborhood),
+            latitude = COALESCE(?, latitude),
+            longitude = COALESCE(?, longitude),
+            location_consent_gps = COALESCE(?, location_consent_gps),
+            age = COALESCE(?, age),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        """,
+        (
+            gender,
+            pref,
+            data.get("bio"),
+            city,
+            neighborhood,
+            latitude,
+            longitude,
+            int(consent) if consent is not None else None,
+            data.get("age") or None,
+            user_id,
+        ),
+    )
+
+    # User core fields updates
+    execute(
+        """
+        UPDATE users
+        SET first_name = COALESCE(?, first_name),
+            last_name = COALESCE(?, last_name),
+            email = COALESCE(?, email)
+        WHERE id = ?
+        """,
+        (data.get("first_name") or None, data.get("last_name") or None, data.get("email") or None, user_id),
+    )
+
+    tags = data.get("tags")
+    if isinstance(tags, str):
+        # Beginner-friendly: a comma-separated text input instead of a tag widget.
+        tags = [t for t in tags.split(",")]
+    if isinstance(tags, list):
+        execute("DELETE FROM user_tags WHERE user_id = ?", (user_id,))
+        clean_tags = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+        for tag_name in clean_tags:
+            execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+
+        if clean_tags:
+            placeholders = ",".join(["?"] * len(clean_tags))
+            tag_rows = query_all(f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags))
+            for tag in tag_rows:
+                execute("INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)", (user_id, tag["id"]))
+
+    return _profile_payload(user_id)
+
+
+@profile_bp.route("/profile/edit", methods=["POST"])
+@login_required
+def edit_profile_submit():
+    user_id = g.current_user["id"]
+    try:
+        _update_profile(user_id, request.form)
+    except APIError as err:
+        flash(err.message, "error")
+        return redirect(url_for("profile.edit_profile"))
+
+    flash("Profile updated.", "success")
+    return redirect(url_for("profile.edit_profile"))
+
+
 @profile_bp.route("/profile/me/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
