@@ -212,8 +212,9 @@ def edit_profile():
 
 
 def _update_profile(user_id: int, data):
-    """Shared update logic used by both the JSON PUT /profile/me route and the
-    plain HTML form on /profile/edit."""
+    """Shared update logic used by the plain HTML form on /profile/edit.
+
+    (Consider reusing this from PUT /profile/me to avoid duplicated update logic.)"""
     gender = data.get("gender") or None
     pref = data.get("sexual_preference") or None
     if gender is not None and gender not in ALLOWED_GENDERS:
