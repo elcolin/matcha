@@ -40,9 +40,11 @@
                                             {% endif %}
                                         {% endif %}
                                         {% if not profile.blocked_by_me %}
-                                            <form method="post"
-                                                  action="{{ url_for('profile.like_profile', id=profile.id) }}">
-                                                <button type="submit" class="btn btn-danger action-btn">Like</button>
+                                            {% if not profile.liked_by_me %}
+                                                <form method="post"
+                                                      action="{{ url_for('profile.like_profile', id=profile.id) }}">
+                                                    <button type="submit" class="btn btn-danger action-btn">Like</button>
+                                            {% endif %}
                                             </form>
                                             <form method="post"
                                                   action="{{ url_for('profile.block_profile', id=profile.id) }}">
