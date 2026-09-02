@@ -215,9 +215,11 @@ def detail(id):
         return "Profile not found", 404
 
     viewer = g.get("current_user")
-    can_interact = bool(viewer and viewer["id"] != id)
+    can_interact = bool(viewer)
     profile["can_interact"] = can_interact
-    if can_interact:
+    is_self = bool(viewer and viewer["id"] == id)
+    profile["is_self"] = is_self
+    if can_interact and not is_self:
 
         recent_view = query_one(
             """
