@@ -18,7 +18,7 @@ Usage:
 """
 
 app = create_app()
-fake = Faker(["en_US", "fr_FR", "de_DE", "es_ES"])
+fake = Faker(["en_US", "fr_FR"])
 
 
 def random_last_seen(created_at: datetime):
@@ -75,6 +75,8 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
+
+
 def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     if ai:
         try:
@@ -87,15 +89,18 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
 
     gender = random.choice(UserConfig.GENDERS)
     sexual_preference = random.choice(UserConfig.SEXUAL_PREFERENCES)
-    country = fake.country()
-    city = fake.city()
-    neighborhood = fake.street_name()
     age = random.randint(18, 70)
     popularity_score = random.randint(0, 5)
     updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
-    latitude = float(fake.latitude()) if location_consent_gps else None
-    longitude = float(fake.longitude()) if location_consent_gps else None
+    latitude_raw, longitude_raw, city, country, _timezone = fake.local_latlng(country_code="FR")
+    latitude = float(latitude_raw)
+    longitude = float(longitude_raw)
+    jitter_lat = latitude + random.uniform(-0.03, 0.03)
+    jitter_lng = longitude + random.uniform(-0.03, 0.03)
+    neighborhood = fake.street_name()
+    latitude = jitter_lat if location_consent_gps else None
+    longitude = jitter_lng if location_consent_gps else None
 
     execute(
         """INSERT INTO profiles
@@ -182,18 +187,15 @@ def create_user_tags(users, tag_map):
                 (user["id"], tag_map[tag_name]),
             )
 
-
 def create_profiles(users, ai: bool = False):
     for user in users:
         generate_profile(user["id"], user["created_at"], ai=ai)
-
 
 def generate_photos(count):
     return [
         f"https://loremflickr.com/400/400/bird?lock={random.randint(1, 100000)}"
         for _ in range(count)
     ]
-
 
 def create_photos(users, photos_per_user=5):
     """Create photos for each user (accepts list of user dicts)."""
@@ -215,6 +217,10 @@ def create_photos(users, photos_per_user=5):
                 ),
             )
 
+def reset_sequence(table_name: str):
+    execute("DELETE FROM sqlite_sequence WHERE name = ?", (table_name,))
+
+
 def main(count: int = 500, ai: bool = False):
     tag_map = generate_tags()
     users = create_users(count)
@@ -225,8 +231,6 @@ def main(count: int = 500, ai: bool = False):
     start_id = users[0]["id"] if users else None
     end_id = users[-1]["id"] if users else None
     print(f"Inserted {count} users, profiles, and user tags.")
-    if start_id and end_id:
-        print(f"Inserted user id range: {start_id} - {end_id}")
     return start_id, end_id
 
 
@@ -243,17 +247,21 @@ def cleanup(start_id: int, end_id: int):
         "DELETE FROM users WHERE id BETWEEN ? AND ?",
         (start_id, end_id),
     )
+    reset_sequence("users")
+    reset_sequence("photos")
+    reset_sequence("tags")
     print(f"Deleted users {start_id} to {end_id} and all related data.")
 
 
 def clean_all():
-    """Delete all seeded data from tables created by this script."""
     execute("DELETE FROM user_tags")
     execute("DELETE FROM photos")
     execute("DELETE FROM profiles")
     execute("DELETE FROM users")
     execute("DELETE FROM tags")
-    print("Deleted all seeded data (user_tags, photos, profiles, users, tags).")
+    for name in ("users", "photos", "tags"):
+        reset_sequence(name)
+    print("Deleted all seeded data")
 
 
 if __name__ == "__main__":
@@ -271,5 +279,4 @@ if __name__ == "__main__":
             ai = len(sys.argv) > 2 and sys.argv[2] == "ai"
             start, end = main(count, ai=ai)
             if start and end:
-                status = "AI bios" if ai else "empty bios"
-                print(f"Generated users {start} - {end} ({status})")
+                print(f"Generated users {start} - {end} with {'AI bios' if ai else 'random bios'}.")

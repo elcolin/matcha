@@ -59,7 +59,7 @@ def is_valid(text):
             "model",
             "ai assistant",
             "assistant",
-            "[name]",
+            "name",
             "named",
             "[city]",
             "bio",
@@ -81,3 +81,5 @@ def generate_bio():
         if is_valid(text):
             return text.strip().strip('"').strip("'")
     return None
+
+

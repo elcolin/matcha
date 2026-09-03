@@ -1,9 +1,6 @@
 from flask import Blueprint, render_template
-
 from app.db import query_all
-
 main_bp = Blueprint("main", __name__)
-
 
 @main_bp.route("/")
 def home():
@@ -11,6 +8,7 @@ def home():
         """
         SELECT u.id, u.username AS name, COALESCE(p.age, 0) AS age,
                COALESCE(p.city, 'Unknown') AS city,
+               COALESCE(p.neighborhood, 'Unknown area') AS neighborhood,
                COALESCE(p.bio, '') AS bio,
                COALESCE(ph.url, '') AS image
         FROM users u
@@ -28,6 +26,7 @@ def home():
             "name": r["name"],
             "age": r["age"],
             "city": r["city"],
+            "neighborhood": r["neighborhood"],
             "interests": [],
             "bio": r["bio"],
             "image": r["image"] or "https://placehold.co/600x400?text=Matcha",
