@@ -37,17 +37,19 @@
             </div>
         </div>
     </section>
-    <!-- PROFILES -->
-    <section class="bg-light py-5">
-        <div class="container">
-            <h2 class="text-center mb-4">People near you</h2>
-            <div class="row g-4">
-                {% for profile in profiles %}
-                    {% include 'components/profile_card.html' %}
-                {% endfor %}
+    {% if show_profiles %}
+        <!-- PROFILES -->
+        <section class="bg-light py-5">
+            <div class="container">
+                <h2 class="text-center mb-4">Your matches</h2>
+                <div class="row g-4">
+                    {% for profile in profiles %}
+                        {% include 'components/profile_card.html' %}
+                    {% endfor %}
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
+    {% endif %}
     <!-- CTA -->
     <section class="text-center py-5">
         <div class="container">
