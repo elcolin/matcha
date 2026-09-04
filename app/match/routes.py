@@ -18,9 +18,9 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def is_gender_compatible(current_pref, candidate_gender):
     if current_pref == "everyone":
         return True
-    if current_pref == "male":
+    if current_pref == "men":
         return candidate_gender == "male"
-    if current_pref == "female":
+    if current_pref == "women":
         return candidate_gender == "female"
     return True
 
@@ -65,19 +65,36 @@ def candidate_profiles(viewer_id: int):
             viewer.get("city") and candidate.get("city") and
             viewer.get("city").strip().lower() == candidate.get("city").strip().lower()
         )
+        same_neighborhood = bool(
+            viewer.get("neighborhood") and candidate.get("neighborhood") and
+            viewer.get("neighborhood").strip().lower() == candidate.get("neighborhood").strip().lower()
+        )
         candidate["shared_tags_count"] = shared_tags
         candidate["distance_km"] = distance_km
         candidate["same_city"] = same_city
+        candidate["same_neighborhood"] = same_neighborhood
         candidates.append(candidate)
 
-    candidates.sort(
-        key=lambda c: (
-            0 if c.get("same_city") else 1,
-            c.get("distance_km") if c.get("distance_km") is not None else MISSING_DISTANCE_KM,
-            -c.get("shared_tags_count", 0),
-            -c.get("popularity_score", 0),
-        )
-    )
+    def bucket_rank(item):
+        if item.get("same_city"):
+            return (0, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+        if item.get("same_neighborhood"):
+            return (1, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+        return (2, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+
+    candidates.sort(key=bucket_rank)
+
+    print("VIEWER:", viewer.get("city"), viewer.get("latitude"), viewer.get("longitude"))
+
+    for candidate in candidates:
+        print(
+            candidate["id"],
+            candidate.get("city"),
+            candidate.get("latitude"),
+            candidate.get("longitude"),
+            candidate.get("same_city"),
+            candidate.get("distance_km"),
+        )      
     return candidates
 
 def apply_filters(items, args):
@@ -91,14 +108,14 @@ def apply_filters(items, args):
     return [item for item in items if ok(item)]
 
 def apply_sort(items, args):
-    items.sort(
-        key=lambda item: (
-            0 if item.get("same_city") else 1,
-            item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM,
-            -item.get("shared_tags_count", 0),
-            -item.get("popularity_score", 0),
-        )
-    )
+    def bucket_rank(item):
+        if item.get("same_city"):
+            return (0, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+        if item.get("same_neighborhood"):
+            return (1, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+        return (2, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+
+    items.sort(key=bucket_rank)
     return items
 
 @match_bp.route("", methods=["GET"])
@@ -106,5 +123,5 @@ def apply_sort(items, args):
 def suggestions():
     items = candidate_profiles(g.current_user["id"])
     items = apply_filters(items, request.args)
-    items = apply_sort(items, request.args)
+    items = apply_sort(items, request.args) 
     return jsonify(items)

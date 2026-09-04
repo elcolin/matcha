@@ -3,3 +3,4 @@ instance/
 .env
 .DS_Store
 .venv/
+app/static/uploads/

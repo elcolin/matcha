@@ -1,4 +1,5 @@
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
@@ -47,6 +48,27 @@ def _ensure_profile_exists(user_id: int):
     )
 
 
+def send_verification_email(user_id: int, email: str, first_name: str = "User"):
+    token = issue_signed_token(current_app.config["SECRET_KEY"], "verify_email", user_id)
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=current_app.config["EMAIL_VERIFY_TOKEN_TTL_SECONDS"])
+    ).isoformat()
+    execute("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)", (user_id, token, expires_at))
+
+    verify_link = url_for("auth.verify_email", token=token, _external=True)
+    send_email(
+        email,
+        "Verify your Matcha account",
+        f"""
+        <h1>Welcome to Matcha! 🐦</h1>
+        <p>Thanks for signing up, {first_name}!</p>
+        <p><a href="{verify_link}">Verify your email</a></p>
+        <p>If you did not create this account, ignore this email.</p>
+        """,
+    )
+    return token
+
+
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
@@ -76,22 +98,7 @@ def register():
     user_id = cur.lastrowid
     _ensure_profile_exists(user_id)
 
-    token = issue_signed_token(current_app.config["SECRET_KEY"], "verify_email", user_id)
-    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=current_app.config["EMAIL_VERIFY_TOKEN_TTL_SECONDS"])).isoformat()
-    execute("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)", (user_id, token, expires_at))
-
-    verify_link = url_for("auth.verify_email", token=token, _external=True)
-
-    send_email(
-        data["email"].strip().lower(),
-        "Verify your Matcha account",
-        f"""
-        <h1>Welcome to Matcha! 🐦</h1>
-        <p>Thanks for signing up, {data["first_name"].strip()}!</p>
-        <p><a href="{verify_link}">Verify your email</a></p>
-        <p>If you did not create this account, ignore this email.</p>
-        """,
-    )
+    send_verification_email(user_id, data["email"].strip().lower(), data["first_name"].strip())
 
     return render_template(
         "register.html",
