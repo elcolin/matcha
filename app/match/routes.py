@@ -18,10 +18,10 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def is_gender_compatible(current_pref, candidate_gender):
     if current_pref == "everyone":
         return True
-    if current_pref == "male":
-        return candidate_gender == "male"
-    if current_pref == "female":
-        return candidate_gender == "female"
+    if current_pref == "men":
+        return candidate_gender == "men"
+    if current_pref == "women":
+        return candidate_gender == "women"
     return True
 
 

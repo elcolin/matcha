@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS password_resets (
 CREATE TABLE IF NOT EXISTS profiles (
     user_id INTEGER PRIMARY KEY,
     gender TEXT,
-    sexual_preference TEXT DEFAULT 'bisexual',
+    sexual_preference TEXT DEFAULT 'everyone',
     bio TEXT DEFAULT '',
     city TEXT,
     neighborhood TEXT,
