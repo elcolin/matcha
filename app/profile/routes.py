@@ -77,7 +77,7 @@ def _profile_payload(user_id: int):
         "first_name": row["first_name"],
         "last_name": row["last_name"],
         "gender": row["gender"],
-        "sexual_preference": row["sexual_preference"] or "bisexual",
+        "sexual_preference": row["sexual_preference"] or "everyone",
         "bio": row["bio"] or "",
         "city": row["city"],
         "neighborhood": row["neighborhood"],

@@ -31,17 +31,18 @@
                                 <label class="form-label" for="gender">Gender</label>
                                 <select class="form-select" id="gender" name="gender" required>
                                     <option value="" disabled {% if not profile.gender %}selected{% endif %}>Choose...</option>
-                                    <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
                                     <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>Female</option>
+                                    <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
                                     <option value="non_binary" {% if profile.gender == 'non_binary' %}selected{% endif %}>Non-binary</option>
+                                    <option value="other" {% if profile.gender == 'other' %}selected{% endif %}>Other</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="sexual_preference">Sexual preference</label>
                                 <select class="form-select" id="sexual_preference" name="sexual_preference" required>
-                                    <option value="straight" {% if profile.sexual_preference == 'straight' %}selected{% endif %}>Straight</option>
-                                    <option value="gay" {% if profile.sexual_preference == 'gay' %}selected{% endif %}>Gay</option>
-                                    <option value="bisexual" {% if profile.sexual_preference == 'bisexual' %}selected{% endif %}>Bisexual</option>
+                                    <option value="everyone" {% if profile.sexual_preference == 'everyone' %}selected{% endif %}>Everyone</option>
+                                    <option value="men" {% if profile.sexual_preference == 'men' %}selected{% endif %}>Men</option>
+                                    <option value="women" {% if profile.sexual_preference == 'women' %}selected{% endif %}>Women</option>
                                 </select>
                             </div>
                         </div>
