@@ -3,48 +3,22 @@ import sys
 import random
 import sqlite3
 from datetime import datetime, timedelta
-from faker import Faker
-import requests
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from faker import Faker
+from app.config import UserConfig
 from app import create_app
 from app.db import execute
 
 """
 Usage:
-    python scripts/generate_500.py [count]           # Generate (default: 500)
-    python scripts/generate_500.py cleanup START END # Delete users START-END
-    python scripts/generate_500.py cleanall         # Delete all from DB
+    python scripts/generate_users.py [count]                  # Generate users (default: 500)
+    python scripts/generate_users.py cleanup START END        # Delete users START id - END id
+    python scripts/generate_users.py cleanall                 # Delete all seeded data
+    python scripts/generate_users.py 20 ai                    # Generate users with AI bios (default: random text)
 """
 
 app = create_app()
-fake = Faker(["en_US", "fr_FR", "de_DE", "es_ES"])
-
-GENDERS = ["female", "male", "non-binary", "other"]
-SEXUAL_PREFERENCES = ["everyone", "men", "women"]
-TAGS = [
-    "sports",
-    "movies",
-    "music",
-    "travel",
-    "food",
-    "art",
-    "fitness",
-    "reading",
-    "gaming",
-    "photography",
-    "technology",
-    "dancing",
-    "pets",
-    "outdoors",
-    "cooking",
-    "yoga",
-    "nightlife",
-    "coffee",
-    "theater",
-    "volunteering",
-]
+fake = Faker(["en_US", "fr_FR"])
 
 
 def random_last_seen(created_at: datetime):
@@ -54,7 +28,6 @@ def random_last_seen(created_at: datetime):
 
 
 def generate_user(max_attempts: int = 10):
-    """Generate a single user row, retrying on UNIQUE constraint failures."""
     for attempt in range(max_attempts):
         first = fake.first_name()
         last = fake.last_name()
@@ -93,10 +66,8 @@ def generate_user(max_attempts: int = 10):
             }
 
         except sqlite3.IntegrityError:
-            # likely a UNIQUE conflict on email or username - retry
             if attempt == max_attempts - 1:
                 raise
-            # reset faker unique state for safety on repeated collisions
             try:
                 fake.unique.clear()
             except Exception:
@@ -104,31 +75,46 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
-def generate_profile(user_id: int, created_at: datetime):
-    gender = random.choice(GENDERS)
-    sexual_preference = random.choice(SEXUAL_PREFERENCES)
-    bio = fake.paragraph(nb_sentences=3)
-    city = fake.city()
-    neighborhood = fake.street_name()
+
+
+def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
+    if ai:
+        try:
+            from generate_bio import generate_bio
+            bio = generate_bio()
+        except Exception:
+            bio = fake.paragraph(nb_sentences=3)
+    else:
+        bio = fake.paragraph(nb_sentences=3)
+
+    gender = random.choice(UserConfig.GENDERS)
+    sexual_preference = random.choice(UserConfig.SEXUAL_PREFERENCES)
     age = random.randint(18, 70)
     popularity_score = random.randint(0, 5)
     updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
-    latitude = float(fake.latitude()) if location_consent_gps else None
-    longitude = float(fake.longitude()) if location_consent_gps else None
+    latitude_raw, longitude_raw, city, country, _timezone = fake.local_latlng(country_code="FR")
+    latitude = float(latitude_raw)
+    longitude = float(longitude_raw)
+    jitter_lat = latitude + random.uniform(-0.03, 0.03)
+    jitter_lng = longitude + random.uniform(-0.03, 0.03)
+    neighborhood = fake.street_name()
+    latitude = jitter_lat if location_consent_gps else None
+    longitude = jitter_lng if location_consent_gps else None
 
     execute(
         """INSERT INTO profiles
-           (user_id, gender, sexual_preference, bio, city, neighborhood,
+           (user_id, gender, sexual_preference, bio, city, country, neighborhood,
             latitude, longitude, location_consent_gps, popularity_score,
             age, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             gender,
             sexual_preference,
             bio,
             city,
+            country,
             neighborhood,
             latitude,
             longitude,
@@ -167,44 +153,49 @@ def _allocate_ids(count: int):
 
 
 def generate_tags():
-    tag_ids = []
-    for tag in TAGS:
+    tag_map = {}
+    for tag_name in UserConfig.TAGS:
         cur = execute(
             "INSERT OR IGNORE INTO tags (name) VALUES (?)",
-            (tag,),
+            (tag_name,),
         )
         if cur.lastrowid:
-            tag_ids.append(cur.lastrowid)
+            tag_map[tag_name] = cur.lastrowid
 
-    existing = execute("SELECT id FROM tags WHERE name IN ({})".format(
-        ",".join("?" for _ in TAGS)
-    ), tuple(TAGS)).fetchall()
-    tag_ids.extend([row[0] for row in existing if row[0] not in tag_ids])
-    return tag_ids
+    existing = execute(
+        "SELECT id, name FROM tags WHERE name IN ({})".format(
+            ",".join("?" for _ in UserConfig.TAGS)
+        ),
+        tuple(UserConfig.TAGS.keys()),
+    ).fetchall()
+    for row in existing:
+        tag_map[row["name"]] = row["id"]
+
+    return tag_map
 
 
-def create_user_tags(users, tag_ids):
+def create_user_tags(users, tag_map):
+    tag_names = list(tag_map.keys())
     for user in users:
-        user_tag_count = random.randint(1, min(5, len(tag_ids)))
-        user_tags = random.sample(tag_ids, user_tag_count)
-        for tag_id in user_tags:
+        max_count = min(7, len(tag_names))
+        min_count = min(3, max_count)
+        user_tag_count = random.randint(min_count, max_count) if max_count > 0 else 0
+        selected_tag_names = random.sample(tag_names, user_tag_count)
+        for tag_name in selected_tag_names:
             execute(
                 "INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)",
-                (user["id"], tag_id),
+                (user["id"], tag_map[tag_name]),
             )
 
-
-def create_profiles(users):
+def create_profiles(users, ai: bool = False):
     for user in users:
-        generate_profile(user["id"], user["created_at"])
-
+        generate_profile(user["id"], user["created_at"], ai=ai)
 
 def generate_photos(count):
     return [
         f"https://loremflickr.com/400/400/bird?lock={random.randint(1, 100000)}"
         for _ in range(count)
     ]
-
 
 def create_photos(users, photos_per_user=5):
     """Create photos for each user (accepts list of user dicts)."""
@@ -226,74 +217,24 @@ def create_photos(users, photos_per_user=5):
                 ),
             )
 
-def main(count: int = 500, reuse_ids: bool = False):
-    tag_ids = generate_tags()
-    if reuse_ids:
-        ids = _allocate_ids(count)
-        users = []
-        for uid in ids:
-            generated = None
-            for attempt in range(10):
-                try:
-                    first = fake.first_name()
-                    last = fake.last_name()
-                    email = fake.unique.email()
-                    username = fake.unique.user_name()
-                    password_hash = fake.sha256()
-                    email_verified = random.choices([0, 1], weights=[20, 80])[0]
-                    created_at = fake.date_time_between(start_date="-2y", end_date="now")
-                    last_seen_at = random_last_seen(created_at)
+def reset_sequence(table_name: str):
+    execute("DELETE FROM sqlite_sequence WHERE name = ?", (table_name,))
 
-                    cur = execute(
-                        """INSERT INTO users (id, email, username, last_name, first_name, password_hash,
-                           email_verified, created_at, last_seen_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            uid,
-                            email,
-                            username,
-                            last,
-                            first,
-                            password_hash,
-                            email_verified,
-                            created_at.isoformat(sep=" "),
-                            last_seen_at.isoformat(sep=" ") if last_seen_at else None,
-                        ),
-                    )
-                    generated = {
-                        "id": uid,
-                        "email": email,
-                        "username": username,
-                        "first_name": first,
-                        "last_name": last,
-                        "created_at": created_at,
-                    }
-                    break
-                except sqlite3.IntegrityError:
-                    try:
-                        fake.unique.clear()
-                    except Exception:
-                        pass
-                    continue
-            if not generated:
-                raise RuntimeError("Failed to insert user with explicit id")
-            users.append(generated)
-    else:
-        users = create_users(count)
 
-    create_profiles(users)
-    create_user_tags(users, tag_ids)
+def main(count: int = 500, ai: bool = False):
+    tag_map = generate_tags()
+    users = create_users(count)
+
+    create_profiles(users, ai=ai)
+    create_user_tags(users, tag_map)
     create_photos(users, 1)
     start_id = users[0]["id"] if users else None
     end_id = users[-1]["id"] if users else None
     print(f"Inserted {count} users, profiles, and user tags.")
-    if start_id and end_id:
-        print(f"Inserted user id range: {start_id} - {end_id}")
     return start_id, end_id
 
 
 def cleanup(start_id: int, end_id: int):
-    """Delete users from start_id to end_id (inclusive) and all related data."""
     execute(
         "DELETE FROM user_tags WHERE user_id BETWEEN ? AND ?",
         (start_id, end_id),
@@ -306,18 +247,21 @@ def cleanup(start_id: int, end_id: int):
         "DELETE FROM users WHERE id BETWEEN ? AND ?",
         (start_id, end_id),
     )
+    reset_sequence("users")
+    reset_sequence("photos")
+    reset_sequence("tags")
     print(f"Deleted users {start_id} to {end_id} and all related data.")
 
 
 def clean_all():
-    """Delete all seeded data from tables created by this script."""
-    # remove relations first
     execute("DELETE FROM user_tags")
     execute("DELETE FROM photos")
     execute("DELETE FROM profiles")
     execute("DELETE FROM users")
     execute("DELETE FROM tags")
-    print("Deleted all seeded data (user_tags, photos, profiles, users, tags).")
+    for name in ("users", "photos", "tags"):
+        reset_sequence(name)
+    print("Deleted all seeded data")
 
 
 if __name__ == "__main__":
@@ -328,21 +272,11 @@ if __name__ == "__main__":
             start = int(sys.argv[2]) if len(sys.argv) > 2 else 1
             end = int(sys.argv[3]) if len(sys.argv) > 3 else 500
             cleanup(start, end)
-        elif len(sys.argv) > 1 and sys.argv[1] == "temp":
-            count = int(sys.argv[2]) if len(sys.argv) > 2 else 500
-            start, end = main(count)
-            if start and end:
-                print(f"Cleaning up temporary users {start} - {end}")
-                cleanup(start, end)
-        elif len(sys.argv) > 1 and sys.argv[1] == "reuse":
-            count = int(sys.argv[2]) if len(sys.argv) > 2 else 500
-            start, end = main(count, reuse_ids=True)
-            if start and end:
-                print(f"Generated (reused ids) users {start} - {end}")
         elif len(sys.argv) > 1 and sys.argv[1] == "cleanall":
             clean_all()
         else:
-            count = int(sys.argv[1]) if len(sys.argv) > 1 else 500
-            start, end = main(count)
+            count = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 500
+            ai = len(sys.argv) > 2 and sys.argv[2] == "ai"
+            start, end = main(count, ai=ai)
             if start and end:
-                print(f"Generated users {start} - {end}")
+                print(f"Generated users {start} - {end} with {'AI bios' if ai else 'random bios'}.")
