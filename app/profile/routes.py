@@ -17,7 +17,6 @@ from flask import (
 
 from werkzeug.utils import secure_filename
 
-from app.auth.routes import update_user_email_and_request_verification
 from app.db import execute, query_all, query_one
 from app.security import build_notification_payload
 from app.utils import (
@@ -173,18 +172,15 @@ def profile_me():
     )
 
     # User core fields updates
-    new_email = str(data.get("email", "") or "").strip().lower()
-    if new_email:
-        update_user_email_and_request_verification(user_id, new_email, data.get("first_name"))
-
     execute(
         """
         UPDATE users
         SET first_name = COALESCE(?, first_name),
-            last_name = COALESCE(?, last_name)
+            last_name = COALESCE(?, last_name),
+            email = COALESCE(?, email)
         WHERE id = ?
         """,
-        (data.get("first_name"), data.get("last_name"), user_id),
+        (data.get("first_name"), data.get("last_name"), data.get("email"), user_id),
     )
 
     tags = data.get("tags")
@@ -277,20 +273,18 @@ def _update_profile(user_id: int, data):
     )
 
     # User core fields updates
-    new_email = str(data.get("email") or "").strip().lower()
-    if new_email:
-        update_user_email_and_request_verification(user_id, new_email, data.get("first_name"))
-
     execute(
         """
         UPDATE users
         SET first_name = COALESCE(?, first_name),
-            last_name = COALESCE(?, last_name)
+            last_name = COALESCE(?, last_name),
+            email = COALESCE(?, email)
         WHERE id = ?
         """,
         (
             data.get("first_name") or None,
             data.get("last_name") or None,
+            data.get("email") or None,
             user_id,
         ),
     )
