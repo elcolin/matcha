@@ -58,6 +58,12 @@
                                    value="{{ profile.tags | join(', ') }}" placeholder="music, hiking, coffee">
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label" for="email"></label>
+                            <input class="form-control" type="text" id="email" name="email"
+                                   value="{{ profile.email | join(', ') }}" placeholder="you@example.com">
+                        </div>
+
                         <hr>
 
                         <h2 class="h6">Location</h2>
