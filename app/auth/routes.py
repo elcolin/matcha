@@ -43,7 +43,7 @@ def _is_locked_out(username: str):
 
 def _ensure_profile_exists(user_id: int):
     execute(
-        "INSERT OR IGNORE INTO profiles (user_id, sexual_preference, bio) VALUES (?, 'bisexual', '')",
+        "INSERT OR IGNORE INTO profiles (user_id, sexual_preference, bio) VALUES (?, 'everyone', '')",
         (user_id,),
     )
 

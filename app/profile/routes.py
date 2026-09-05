@@ -3,6 +3,9 @@ import secrets
 import os
 from datetime import datetime, timezone
 
+from app.config import UserConfig
+
+
 from flask import (
     Blueprint,
     g,
@@ -29,11 +32,6 @@ from app.utils import (
 )
 
 profile_bp = Blueprint("profile", __name__)
-
-
-ALLOWED_GENDERS = {"male", "female", "non_binary"}
-ALLOWED_PREFS = {"straight", "gay", "bisexual"}
-
 
 def _profile_payload(user_id: int):
     row = query_one(
@@ -79,7 +77,7 @@ def _profile_payload(user_id: int):
         "first_name": row["first_name"],
         "last_name": row["last_name"],
         "gender": row["gender"],
-        "sexual_preference": row["sexual_preference"] or "bisexual",
+        "sexual_preference": row["sexual_preference"] or "everyone",
         "bio": row["bio"] or "",
         "city": row["city"],
         "neighborhood": row["neighborhood"],
@@ -122,9 +120,9 @@ def profile_me():
 
     gender = data.get("gender")
     pref = data.get("sexual_preference")
-    if gender is not None and gender not in ALLOWED_GENDERS:
+    if gender is not None and gender not in UserConfig.GENDERS:
         raise APIError("Invalid gender", 400)
-    if pref is not None and pref not in ALLOWED_PREFS:
+    if pref is not None and pref not in UserConfig.SEXUAL_PREFERENCES:
         raise APIError("Invalid sexual_preference", 400)
 
     consent = data.get("location_consent_gps")
@@ -217,9 +215,9 @@ def _update_profile(user_id: int, data):
     (Consider reusing this from PUT /profile/me to avoid duplicated update logic.)"""
     gender = data.get("gender") or None
     pref = data.get("sexual_preference") or None
-    if gender is not None and gender not in ALLOWED_GENDERS:
+    if gender is not None and gender not in UserConfig.GENDERS:
         raise APIError("Invalid gender", 400)
-    if pref is not None and pref not in ALLOWED_PREFS:
+    if pref is not None and pref not in UserConfig.SEXUAL_PREFERENCES:
         raise APIError("Invalid sexual_preference", 400)
 
     consent = data.get("location_consent_gps")
