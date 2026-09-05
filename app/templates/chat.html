@@ -84,14 +84,13 @@
     e.preventDefault();
     const content = input.value.trim();
     if (!content) return;
+      renderMessage({ sender_id: currentUserId, content });
+      input.value = '';
     fetch(`/chat/${otherUserId}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
-    }).then(() => {
-      renderMessage({ sender_id: currentUserId, content });
-      input.value = '';
-    });
+    })
   });
   
   function connectStream() {
