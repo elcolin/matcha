@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from app.config import UserConfig
+from .data import UserUpdater
 
 
 from flask import (
@@ -106,102 +107,6 @@ def _ensure_primary_photo(user_id: int):
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
-
-@profile_bp.route("/profile/me", methods=["GET", "PUT"])
-@login_required
-def profile_me():
-    user_id = g.current_user["id"]
-
-    if request.method == "GET":
-        payload = _profile_payload(user_id)
-        return jsonify(payload)
-
-    data = request.get_json(silent=True) or request.form
-
-    gender = data.get("gender")
-    pref = data.get("sexual_preference")
-    if gender is not None and gender not in UserConfig.GENDERS:
-        raise APIError("Invalid gender", 400)
-    if pref is not None and pref not in UserConfig.SEXUAL_PREFERENCES:
-        raise APIError("Invalid sexual_preference", 400)
-
-    consent = data.get("location_consent_gps")
-    if consent is not None:
-        consent = bool(consent)
-
-    city = data.get("city")
-    neighborhood = data.get("neighborhood")
-    latitude = data.get("latitude")
-    longitude = data.get("longitude")
-
-    if consent is False and not (city or neighborhood):
-        raise APIError(
-            "Manual location (city or neighborhood) is required when GPS consent is refused",
-            400,
-        )
-
-    execute(
-        """
-        UPDATE profiles
-        SET gender = COALESCE(?, gender),
-            sexual_preference = COALESCE(?, sexual_preference),
-            bio = COALESCE(?, bio),
-            city = COALESCE(?, city),
-            neighborhood = COALESCE(?, neighborhood),
-            latitude = COALESCE(?, latitude),
-            longitude = COALESCE(?, longitude),
-            location_consent_gps = COALESCE(?, location_consent_gps),
-            age = COALESCE(?, age),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-        """,
-        (
-            gender,
-            pref,
-            data.get("bio"),
-            city,
-            neighborhood,
-            latitude,
-            longitude,
-            int(consent) if consent is not None else None,
-            data.get("age"),
-            user_id,
-        ),
-    )
-
-    # User core fields updates
-    execute(
-        """
-        UPDATE users
-        SET first_name = COALESCE(?, first_name),
-            last_name = COALESCE(?, last_name),
-            email = COALESCE(?, email)
-        WHERE id = ?
-        """,
-        (data.get("first_name"), data.get("last_name"), data.get("email"), user_id),
-    )
-
-    tags = data.get("tags")
-    if isinstance(tags, list):
-        execute("DELETE FROM user_tags WHERE user_id = ?", (user_id,))
-        clean_tags = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
-        for tag_name in clean_tags:
-            execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
-
-        if clean_tags:
-            placeholders = ",".join(["?"] * len(clean_tags))
-            tag_rows = query_all(
-                f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags)
-            )
-            for tag in tag_rows:
-                execute(
-                    "INSERT OR IGNORE INTO user_tags (user_id, tag_id) VALUES (?, ?)",
-                    (user_id, tag["id"]),
-                )
-
-    return jsonify(_profile_payload(user_id))
-
-
 @profile_bp.route("/profile/edit", methods=["GET"])
 @login_required
 def edit_profile():
@@ -210,9 +115,7 @@ def edit_profile():
 
 
 def _update_profile(user_id: int, data):
-    """Shared update logic used by the plain HTML form on /profile/edit.
-
-    (Consider reusing this from PUT /profile/me to avoid duplicated update logic.)"""
+    """Shared update logic used by the plain HTML form on /profile/edit."""
     gender = data.get("gender") or None
     pref = data.get("sexual_preference") or None
     if gender is not None and gender not in UserConfig.GENDERS:
@@ -270,22 +173,12 @@ def _update_profile(user_id: int, data):
         ),
     )
 
-    # User core fields updates
-    execute(
-        """
-        UPDATE users
-        SET first_name = COALESCE(?, first_name),
-            last_name = COALESCE(?, last_name),
-            email = COALESCE(?, email)
-        WHERE id = ?
-        """,
-        (
-            data.get("first_name") or None,
-            data.get("last_name") or None,
-            data.get("email") or None,
-            user_id,
-        ),
-    )
+    # # User core fields updates
+    # email = data.get("email") or None
+    # if (email is not None)
+    UserUpdater.change_users_email(user_id, data.get("email") or None)
+    UserUpdater.change_users_first_name(user_id, data.get("first_name") or None)
+    UserUpdater.change_users_lastname(user_id, data.get("last_name") or None)
 
     tags = data.get("tags")
     if isinstance(tags, str):
@@ -343,7 +236,7 @@ def _save_uploaded_photo(file_storage):
     return f"/static/uploads/{unique_name}"
 
 
-@profile_bp.route("/profile/me/photos", methods=["POST", "DELETE"])
+@profile_bp.route("/profile/edit/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
@@ -414,7 +307,7 @@ def profile_photos():
     return jsonify(_profile_payload(user_id)["photos"])
 
 
-@profile_bp.route("/profile/me/photos/delete", methods=["POST"])
+@profile_bp.route("/profile/edit/photos/delete", methods=["POST"])
 @login_required
 def profile_photos_delete_form():
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
@@ -681,41 +574,6 @@ def report_profile(id):
         flash("Profile reported.", "success")
         return redirect(url_for("profile.detail", id=id))
     return jsonify({"reported": True})
-
-
-@profile_bp.route("/profile/me/viewers", methods=["GET"])
-@login_required
-def my_viewers():
-    current = g.current_user["id"]
-    rows = query_all(
-        """
-        SELECT u.id, u.username, u.first_name, u.last_name, MAX(v.created_at) AS last_view_at
-        FROM profile_views v
-        JOIN users u ON u.id = v.viewer_id
-        WHERE v.viewed_id = ?
-        GROUP BY u.id, u.username, u.first_name, u.last_name
-        ORDER BY last_view_at DESC
-        """,
-        (current,),
-    )
-    return jsonify([dict(r) for r in rows])
-
-
-@profile_bp.route("/profile/me/liked-by", methods=["GET"])
-@login_required
-def liked_by_me():
-    current = g.current_user["id"]
-    rows = query_all(
-        """
-        SELECT u.id, u.username, u.first_name, u.last_name, l.created_at
-        FROM likes l
-        JOIN users u ON u.id = l.from_user_id
-        WHERE l.to_user_id = ?
-        ORDER BY l.created_at DESC
-        """,
-        (current,),
-    )
-    return jsonify([dict(r) for r in rows])
 
 
 @profile_bp.route("/notifications", methods=["GET"])
