@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.config import UserConfig
 from .data import UserUpdater
+from .geolocation import get_location_from_coords, check_if_city_valid
 
 
 from flask import (
@@ -113,27 +114,6 @@ def edit_profile():
     profile = _profile_payload(g.current_user["id"])
     return render_template("profile_edit.html", profile=profile)
 
-
-from geopy.geocoders import Nominatim
-import certifi
-import os
-os.environ["SSL_CERT_FILE"] = certifi.where()
-
-geolocator = Nominatim(user_agent="matcha-app")  # required: unique app identifier
-
-def get_location_from_coords(lat, lon):
-    location = geolocator.reverse((lat, lon), exactly_one=True)
-    if location is None:
-        return None
-
-    address = location.raw.get("address", {})
-    return {
-        "city": address.get("city") or address.get("town") or address.get("village"),
-        "neighbourhood": address.get("neighbourhood") or address.get("suburb"),
-        "country": address.get("country"),
-        "raw": address,  # useful for debugging what fields are actually available
-    }
-
 def _update_profile(user_id: int, data):
     """Shared update logic used by the plain HTML form on /profile/edit."""
     gender = data.get("gender") or None
@@ -155,21 +135,21 @@ def _update_profile(user_id: int, data):
 
     latitude = data.get("latitude") or None
     longitude = data.get("longitude") or None
-    if consent:
-        result = get_location_from_coords(latitude, longitude)
-        neighborhood = result["neighbourhood"]
-        city = result["city"]
-    else:
-        neighborhood = data.get("neighborhood") or None
-        city = data.get("city") or None
-        location = geolocator.geocode(city, exactly_one=True)
-        if (location is None):
-            raise APIError(f"'{city}' is not a recognized city.")
-    if consent is False and not (city or neighborhood):
-        raise APIError(
-            "Manual location (city or neighborhood) is required when GPS consent is refused",
-            400,
-        )
+    neighborhood = data.get("neighborhood") or None
+    city = data.get("city") or None
+
+    try :
+        if consent:
+            result = get_location_from_coords(latitude, longitude)
+            neighborhood = result["neighbourhood"]
+            city = result["city"]
+        else:
+            check_if_city_valid(city)
+    except APIError as e:
+        neighborhood =  None
+        city =  None
+        flash(e.message, "error")
+
 
     execute(
         """
