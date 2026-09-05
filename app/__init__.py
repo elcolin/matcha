@@ -10,6 +10,8 @@ from app.users.routes import users_bp
 from app.match.routes import match_bp
 from app.chat.routes import chat_bp
 from app.profile.routes import profile_bp
+from app.notifications.routes import notifications_bp
+
 from app.db import close_db, init_db, query_one, execute
 
 load_dotenv()
@@ -25,6 +27,7 @@ def create_app():
     app.register_blueprint(match_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(profile_bp)
+    app.register_blueprint(notifications_bp)
 
     app.teardown_appcontext(close_db)
 

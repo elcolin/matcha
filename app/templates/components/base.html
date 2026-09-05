@@ -36,12 +36,12 @@
                   match.search_view, chat.chat_view and a notifications page
                   exist (see app/match/routes.py, app/chat/routes.py).
                 #}
-                            <li class="nav-item">
-                                <span class="nav-link disabled">
-                                    Notifications
-                                    <span id="notif-badge" class="badge bg-danger">{{ unread_notifications }}</span>
-                                </span>
-                            </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('notifications.notifications_view') }}">
+                        Notifications
+                        <span id="notif-badge" class="badge bg-danger">{{ unread_notifications }}</span>
+                    </a>
+                </li>
                             <li class="nav-item"><a class="nav-link" href="{{ url_for("chat.chat_view") }}">Chat</a></li>
                             <li class="nav-item"><a class="nav-link"
    href="{{ url_for('profile.detail', id=current_user.id) }}">My Profile</a></li>
