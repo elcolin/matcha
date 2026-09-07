@@ -14,6 +14,8 @@ def get_location_from_coords(lat, lon):
         return None
 
     address = location.raw.get("address", {})
+    if address is None:
+        raise APIError("GPS localisation failed, please enter manually.")
     return {
         "city": address.get("city") or address.get("town") or address.get("village"),
         "neighbourhood": address.get("neighbourhood") or address.get("suburb"),
