@@ -355,10 +355,10 @@ def detail(id):
                 "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
                 (viewer["id"], id),
             )
-        add_notification(
-            id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
-        )
-        update_popularity(id)
+            add_notification(
+                id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
+            )
+            update_popularity(id)
 
         profile["liked_by_me"] = bool(
             query_one(
