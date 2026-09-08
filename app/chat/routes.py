@@ -108,6 +108,14 @@ def send_message(user_id):
     return jsonify({"sent": True})
 
 
+def _unread_notifications_count(user_id):
+    row = query_one(
+        "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,),
+    )
+    return row["c"] if row else 0
+
+
 @chat_bp.route("/stream", methods=["GET"])
 @login_required
 def stream_events():
@@ -116,7 +124,11 @@ def stream_events():
 
     def generator():
         last_message_id = since
+        polls = 0
         try:
+            # Sync the badge immediately on connect, then every ~10s after that,
+            # so it reflects new notifications without waiting for a page reload.
+            yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': _unread_notifications_count(current)})}\n\n"
             while True:
                 messages = query_all(
                     "SELECT id, sender_id, content, created_at FROM messages WHERE receiver_id = ? AND id > ? ORDER BY id ASC",
@@ -126,6 +138,11 @@ def stream_events():
                     for msg in messages:
                         last_message_id = msg["id"]
                         yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
+
+                polls += 1
+                if polls % HEARTBEAT_EVERY_N_POLLS == 0:
+                    yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': _unread_notifications_count(current)})}\n\n"
+
                 time.sleep(POLL_INTERVAL_SECONDS)
         except GeneratorExit:
             return
