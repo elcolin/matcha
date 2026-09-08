@@ -2,8 +2,10 @@ from flask import (
     Blueprint,
     g,
     jsonify,
+    redirect,
     request,
-    render_template
+    render_template,
+    url_for,
 )
 
 from app.utils import (
@@ -14,35 +16,6 @@ import json
 from app.db import execute, query_all, query_one
 
 notifications_bp = Blueprint("notifications", __name__)
-
-@notifications_bp.route("/notifications", methods=["GET"])
-@login_required
-def list_notifications():
-    current = g.current_user["id"]
-    unread_only = request.args.get("unread") == "1"
-    if unread_only:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-    else:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-
-    payload = []
-    for row in rows:
-        item = dict(row)
-        if item.get("payload"):
-            try:
-                item["payload"] = json.loads(item["payload"])
-            except Exception:
-                pass
-        payload.append(item)
-
-    return jsonify(payload)
-
 
 @notifications_bp.route("/notifications/unread-count", methods=["GET"])
 @login_required
@@ -60,7 +33,7 @@ def unread_notifications_count():
 def mark_notifications_read():
     current = g.current_user["id"]
     execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (current,))
-    return jsonify({"ok": True})
+    return redirect(url_for("notifications.notifications_view"))
 
 def _notifications_for(user_id, unread_only=False):
     if unread_only:

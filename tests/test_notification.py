@@ -193,20 +193,7 @@ class NotificationCreationTests(unittest.TestCase):
 
     # -- exposition via les routes de app/notifications --------------------
 
-    def test_notifications_list_route_reflects_created_notification(self):
-        self.login("alice")
-        self.client.get(f"/profile/{self.user_b}?format=json")
-
-        self.login("bob")
-        response = self.client.get("/notifications")
-
-        self.assertEqual(response.status_code, 200)
-        data = response.get_json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["type"], "profile_view")
-        self.assertEqual(data[0]["payload"], {"viewer_id": self.user_a})
-
-    def test_unread_count_and_mark_read_flow(self):
+    def test_unread_count_reflects_created_notification(self):
         self.login("alice")
         self.client.get(f"/profile/{self.user_b}?format=json")
 
@@ -214,8 +201,17 @@ class NotificationCreationTests(unittest.TestCase):
         unread = self.client.get("/notifications/unread-count").get_json()
         self.assertEqual(unread["unread"], 1)
 
+    def test_mark_read_redirects_and_clears_unread_count(self):
+        self.login("alice")
+        self.client.get(f"/profile/{self.user_b}?format=json")
+
+        self.login("bob")
         mark_read = self.client.post("/notifications/mark-read")
-        self.assertEqual(mark_read.get_json(), {"ok": True})
+
+        # Post/Redirect/Get : evite le "confirmer la resoumission du formulaire"
+        # du navigateur si l'utilisateur rafraichit la page apres coup.
+        self.assertEqual(mark_read.status_code, 302)
+        self.assertTrue(mark_read.headers["Location"].endswith("/notifications/view"))
 
         unread_after = self.client.get("/notifications/unread-count").get_json()
         self.assertEqual(unread_after["unread"], 0)
@@ -231,7 +227,7 @@ class NotificationCreationTests(unittest.TestCase):
         self.assertIn(b"Profile view", response.data)
 
     def test_notifications_routes_require_login(self):
-        for path in ("/notifications", "/notifications/unread-count", "/notifications/view"):
+        for path in ("/notifications/unread-count", "/notifications/view"):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 401, path)
 
