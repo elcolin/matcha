@@ -1,5 +1,4 @@
 import secrets
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
@@ -186,7 +185,6 @@ def request_password_reset():
         return render_template("forgot_password.html")
 
     identifier = str(request.form.get("email", "")).strip().lower()
-    print("Password reset requested for:", identifier)
 
     if not identifier:
         return render_template("forgot_password.html", error="Email is required")

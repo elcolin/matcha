@@ -3,27 +3,12 @@ import time
 
 from flask import Blueprint, Response, g, jsonify, render_template, request, stream_with_context
 
-from app.db import execute, query_all, query_one
+from app.db import execute, query_all
 from app.security import build_notification_payload
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
 POLL_INTERVAL_SECONDS = 1
-HEARTBEAT_EVERY_N_POLLS = 10  # send the unread-count heartbeat every ~10s
-PRESENCE_STALE_SECONDS = 15  # how long a "viewing this chat" ping stays valid
-
-
-def _is_viewing_chat(viewer_id, partner_id):
-    """True if `viewer_id` pinged the chat page with `partner_id` open recently."""
-    row = query_one(
-        """
-        SELECT 1 FROM chat_presence
-        WHERE user_id = ? AND partner_id = ?
-          AND updated_at >= datetime('now', ?)
-        """,
-        (viewer_id, partner_id, f"-{PRESENCE_STALE_SECONDS} seconds"),
-    )
-    return bool(row)
 
 
 @chat_bp.route("", methods=["GET"])
@@ -73,7 +58,6 @@ def conversation(user_id):
     if is_blocked_between(current, user_id):
         raise APIError("Chat unavailable", 403)
 
-    print(current, user_id)
     rows = query_all(
         """
         SELECT id, sender_id, receiver_id, content, created_at, read_at
