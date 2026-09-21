@@ -1,7 +1,7 @@
 # Tests unitaires
 
 ## Objectif
-Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`).
+Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`) et l'échappement HTML des messages flash (`test_flash_xss.py`, régression XSS sur `app/templates/components/base.html`).
 
 ## Exécution locale
 Depuis la racine du dépôt :
