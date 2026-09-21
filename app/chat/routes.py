@@ -105,7 +105,32 @@ def send_message(user_id):
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
         (current, user_id, content),
     )
+
+    if not _is_viewing_chat(user_id, current):
+        add_notification(user_id, "message_received", build_notification_payload(from_user_id=current))
+
     return jsonify({"sent": True})
+
+
+@chat_bp.route("/<int:user_id>/presence", methods=["POST"])
+@login_required
+def ping_presence(user_id):
+    current = g.current_user["id"]
+    if not is_match(current, user_id):
+        raise APIError("Chat is available only for connected users", 403)
+    if is_blocked_between(current, user_id):
+        raise APIError("Chat unavailable", 403)
+
+    execute(
+        """
+        INSERT INTO chat_presence (user_id, partner_id, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, partner_id)
+        DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+        """,
+        (current, user_id),
+    )
+    return jsonify({"ok": True})
 
 
 def _unread_notifications_count(user_id):
