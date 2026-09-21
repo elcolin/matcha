@@ -1,6 +1,6 @@
 import secrets
 from functools import wraps
-from flask import current_app, g, jsonify, request, session
+from flask import current_app, g, request, session
 
 from app.db import execute, query_one
 from app.security import csrf_token_signature_valid, generate_csrf_token
@@ -16,10 +16,6 @@ class APIError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
-
-
-def json_error(message, status=400):
-    return jsonify({"error": message}), status
 
 
 def login_required(fn):
