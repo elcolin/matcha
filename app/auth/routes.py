@@ -186,7 +186,6 @@ def request_password_reset():
         return render_template("forgot_password.html")
 
     identifier = str(request.form.get("email", "")).strip().lower()
-    print("Password reset requested for:", identifier)
 
     if not identifier:
         return render_template("forgot_password.html", error="Email is required")
@@ -194,33 +193,28 @@ def request_password_reset():
     user = query_one("SELECT id FROM users WHERE email = ?", (identifier,))
 
     if user:
-        return render_template("forgot_password.html", success=f"Reset link has been sent to{identifier}")
-    
-    else:
-        return render_template("forgot_password.html", error=f"No such user{identifier}")
-    
-    token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
-    ).isoformat()
-    execute(
-        "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
-        (user["id"], token, expires_at),
-    )
+        token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
+        ).isoformat()
+        execute(
+            "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
+            (user["id"], token, expires_at),
+        )
 
-    reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
-    send_email(
-        identifier,
-        "Reset your Matcha password",
-        f"""
-        <h1>Password reset</h1>
-        <p>You requested a password reset for your Matcha account</p>
-        <p><a href="{reset_link}">Reset password</a></p>
-        <p>If you did not request this, ignore this email.</p>
-        """,
-    )
+        reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
+        send_email(
+            identifier,
+            "Reset your Matcha password",
+            f"""
+            <h1>Password reset</h1>
+            <p>You requested a password reset for your Matcha account</p>
+            <p><a href="{reset_link}">Reset password</a></p>
+            <p>If you did not request this, ignore this email.</p>
+            """,
+        )
 
-    return render_template("forgot_password.html", success="If your account exists, a reset link has been sent.")
+    return render_template("forgot_password.html", success="If an account exists with this email, a reset link has been sent.")
 
 @auth_bp.route("/password-reset/confirm/<token>", methods=["GET", "POST"])
 def confirm_password_reset(token):
