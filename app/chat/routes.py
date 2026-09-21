@@ -72,7 +72,6 @@ def conversation(user_id):
     if is_blocked_between(current, user_id):
         raise APIError("Chat unavailable", 403)
 
-    print(current, user_id)
     rows = query_all(
         """
         SELECT id, sender_id, receiver_id, content, created_at, read_at
@@ -130,14 +129,6 @@ def ping_presence(user_id):
         (current, user_id),
     )
     return jsonify({"ok": True})
-
-
-def _unread_notifications_count(user_id):
-    row = query_one(
-        "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0",
-        (user_id,),
-    )
-    return row["c"] if row else 0
 
 
 @chat_bp.route("/stream", methods=["GET"])
