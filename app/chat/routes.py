@@ -9,7 +9,6 @@ from app.utils import APIError, add_notification, is_blocked_between, is_match, 
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
 POLL_INTERVAL_SECONDS = 1
-HEARTBEAT_EVERY_N_POLLS = 10  # send the unread-count heartbeat every ~10s
 PRESENCE_STALE_SECONDS = 15  # how long a "viewing this chat" ping stays valid
 
 
@@ -149,11 +148,7 @@ def stream_events():
 
     def generator():
         last_message_id = since
-        polls = 0
         try:
-            # Sync the badge immediately on connect, then every ~10s after that,
-            # so it reflects new notifications without waiting for a page reload.
-            yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': _unread_notifications_count(current)})}\n\n"
             while True:
                 messages = query_all(
                     "SELECT id, sender_id, content, created_at FROM messages WHERE receiver_id = ? AND id > ? ORDER BY id ASC",
@@ -163,10 +158,6 @@ def stream_events():
                     for msg in messages:
                         last_message_id = msg["id"]
                         yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
-
-                polls += 1
-                if polls % HEARTBEAT_EVERY_N_POLLS == 0:
-                    yield f"event: heartbeat\ndata: {json.dumps({'unread_notifications': _unread_notifications_count(current)})}\n\n"
 
                 time.sleep(POLL_INTERVAL_SECONDS)
         except GeneratorExit:
