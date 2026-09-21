@@ -1,7 +1,7 @@
 # Tests unitaires
 
 ## Objectif
-Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`).
+Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`, `test_security.py`) et les règles de notifications liées au blocage entre utilisateurs (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`).
 
 ## Exécution locale
 Depuis la racine du dépôt :
