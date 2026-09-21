@@ -1,7 +1,7 @@
 # Tests unitaires
 
 ## Objectif
-Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`) et l'échappement HTML des messages flash (`test_flash_xss.py`, régression XSS sur `app/templates/components/base.html`).
+Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre les helpers de sécurité (`app/security.py`), l'échappement HTML des messages flash (`test_flash_xss.py`, régression XSS sur `app/templates/components/base.html`) et la non-fuite d'existence de compte lors d'une panne d'envoi d'email (`test_auth_email_errors.py`, régression sur `app/auth/routes.py::request_password_reset` et `send_verification_email` : un échec `send_email` ne doit jamais se traduire par un statut HTTP différent entre un compte existant et un compte inconnu).
 
 ## Exécution locale
 Depuis la racine du dépôt :

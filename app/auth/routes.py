@@ -56,16 +56,21 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
     execute("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)", (user_id, token, expires_at))
 
     verify_link = url_for("auth.verify_email", token=token, _external=True)
-    send_email(
-        email,
-        "Verify your Matcha account",
-        f"""
-        <h1>Welcome to Matcha! 🐦</h1>
-        <p>Thanks for signing up, {first_name}!</p>
-        <p><a href="{verify_link}">Verify your email</a></p>
-        <p>If you did not create this account, ignore this email.</p>
-        """,
-    )
+    try:
+        send_email(
+            email,
+            "Verify your Matcha account",
+            f"""
+            <h1>Welcome to Matcha! 🐦</h1>
+            <p>Thanks for signing up, {first_name}!</p>
+            <p><a href="{verify_link}">Verify your email</a></p>
+            <p>If you did not create this account, ignore this email.</p>
+            """,
+        )
+    except Exception:
+        # Never let an SMTP failure surface as a 500: it would leak account
+        # existence via a status-code side channel elsewhere (see #61).
+        current_app.logger.exception("Failed to send verification email to user %s", user_id)
     return token
 
 
@@ -203,16 +208,22 @@ def request_password_reset():
         )
 
         reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
-        send_email(
-            identifier,
-            "Reset your Matcha password",
-            f"""
-            <h1>Password reset</h1>
-            <p>You requested a password reset for your Matcha account</p>
-            <p><a href="{reset_link}">Reset password</a></p>
-            <p>If you did not request this, ignore this email.</p>
-            """,
-        )
+        try:
+            send_email(
+                identifier,
+                "Reset your Matcha password",
+                f"""
+                <h1>Password reset</h1>
+                <p>You requested a password reset for your Matcha account</p>
+                <p><a href="{reset_link}">Reset password</a></p>
+                <p>If you did not request this, ignore this email.</p>
+                """,
+            )
+        except Exception:
+            # An SMTP failure here must not surface as a 500: that would
+            # only happen for existing accounts and would reintroduce an
+            # account-enumeration side channel (see #61).
+            current_app.logger.exception("Failed to send password reset email to user %s", user["id"])
 
     return render_template("forgot_password.html", success="If an account exists with this email, a reset link has been sent.")
 
