@@ -158,10 +158,9 @@ def call_ollama(prompt, model=MODEL):
 def build_prompt(history, next_label):
     transcript = "\n".join(f"{label}: {text}" for label, text in history)
     intro = (
-        "Tu simules une conversation privée entre deux personnes qui viennent de matcher "
-        "sur une application de rencontre. Reponds en francais, de facon courte, naturelle "
-        "et decontractee (une phrase, 20 mots maximum). N'ajoute ni guillemets ni prefixe, "
-        "ecris uniquement le message."
+        "You are simulating a private conversation between two people who just matched "
+        "on a dating app. Reply in English, short, natural and casual (one sentence, "
+        "20 words maximum). Don't add quotes or a prefix, write only the message."
     )
     if transcript:
         return f"{intro}\n\n{transcript}\n{next_label}:"
