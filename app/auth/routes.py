@@ -242,6 +242,7 @@ def confirm_password_reset(token):
                     <div class="alert alert-success">{{ success }}</div>
                   {% endif %}
                   <form method="POST" action="{{ url_for('auth.confirm_password_reset', token=token) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                       <label class="form-label">New Password</label>
                       <input name="password" class="form-control" type="password" required />
