@@ -342,19 +342,20 @@ def detail(id):
     profile["is_self"] = is_self
     if can_interact and not is_self:
 
-        recent_view = query_one(
-            """
-            SELECT id
-            FROM profile_views
-            WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
-            """,
-            (viewer["id"], id),
-        )
-        if not recent_view:
-            execute(
-                "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+        if not is_blocked_between(viewer["id"], id):
+            recent_view = query_one(
+                """
+                SELECT id
+                FROM profile_views
+                WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
+                """,
                 (viewer["id"], id),
             )
+            if not recent_view:
+                execute(
+                    "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+                    (viewer["id"], id),
+                )
             add_notification(
                 id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
             )
@@ -479,9 +480,10 @@ def unlike_profile_form(id):
         "DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id)
     )
     if cur.rowcount:
-        add_notification(
-            id, "unliked", build_notification_payload(from_user_id=current)
-        )
+        if not is_blocked_between(current, id):
+            add_notification(
+                id, "unliked", build_notification_payload(from_user_id=current)
+            )
         update_popularity(id)
     return redirect(url_for("profile.detail", id=id))
 
