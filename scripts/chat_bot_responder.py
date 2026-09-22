@@ -133,13 +133,12 @@ def build_reply_prompt(history, bot_label=BOT_LABEL, partner_label=PARTNER_LABEL
     """Prompt for a single bot reply, built on top of the shared `build_prompt`.
 
     `build_prompt` alone (a plain alternating transcript) is not directive enough
-    for the small instruct model used here (qwen2.5:0.5b): it regularly drifts and
-    completes the partner's turn instead of the bot's own -- i.e. it answers
-    prefixed with `partner_label:` instead of `bot_label:`. Making both "who
-    replies" and "to what" explicit greatly reduces that drift. This lives here
-    rather than in `build_prompt` because that function is shared with
-    `generate_chat.py`, which generates both sides of a conversation and has no
-    single "partner to react to".
+    for small instruct models: they can drift and complete the partner's turn
+    instead of the bot's own -- i.e. answer prefixed with `partner_label:` instead
+    of `bot_label:`. Making both "who replies" and "to what" explicit greatly
+    reduces that drift. This lives here rather than in `build_prompt` because that
+    function is shared with `generate_chat.py`, which generates both sides of a
+    conversation and has no single "partner to react to".
     """
     prompt = build_prompt(history, bot_label)
 

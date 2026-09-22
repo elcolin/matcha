@@ -21,13 +21,14 @@ Usage:
 
 Requires a local Ollama server (https://ollama.com) running with a small instruct model
 pulled, e.g.:
-    ollama pull qwen2.5:0.5b
+    ollama pull qwen2.5:3b-instruct
     ollama serve
 
 The model and host can be overridden with the OLLAMA_MODEL / OLLAMA_HOST env vars.
 """
 
 MODELS = [
+    "qwen2.5:3b-instruct",
     "qwen2.5:0.5b",
     "llama3.2:1b",
 ]

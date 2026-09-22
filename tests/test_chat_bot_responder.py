@@ -145,11 +145,12 @@ class GenerateBotReplyPromptRegressionTests(unittest.TestCase):
 
 
 class GenerateBotReplyMislabelGuardTests(unittest.TestCase):
-    """qwen2.5:0.5b sometimes drifts and completes the partner's turn instead of
-    the bot's own (i.e. answers prefixed with `A:` instead of `B:`), which leaks
-    that literal prefix into the message actually sent since `clean_generated_text`
-    only strips the *expected* label. This must be treated as an invalid
-    candidate and retried, like any other malformed generation."""
+    """Small instruct models sometimes drift and complete the partner's turn
+    instead of the bot's own (i.e. answer prefixed with `A:` instead of `B:`),
+    which leaks that literal prefix into the message actually sent since
+    `clean_generated_text` only strips the *expected* label. This must be
+    treated as an invalid candidate and retried, like any other malformed
+    generation."""
 
     @patch("scripts.chat_bot_responder.call_ollama")
     @patch("scripts.chat_bot_responder.query_all")
