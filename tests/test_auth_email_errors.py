@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -39,11 +40,22 @@ class EmailFailureDoesNotLeakTests(unittest.TestCase):
         os.close(self.db_fd)
         os.remove(self.db_path)
 
+    def _get_csrf_token(self, path):
+        response = self.client.get(path)
+        html = response.get_data(as_text=True)
+        match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+        self.assertIsNotNone(match, f"csrf_token hidden field missing from {path}")
+        return match.group(1)
+
     @patch("app.auth.routes.send_email", side_effect=RuntimeError("SMTP misconfigured"))
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
     def test_password_reset_smtp_failure_still_returns_generic_success(self, mock_issue_token, mock_send_email):
         response = self.client.post(
-            "/password-reset/request", data={"email": "known@example.com"}
+            "/password-reset/request",
+            data={
+                "email": "known@example.com",
+                "csrf_token": self._get_csrf_token("/password-reset/request"),
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -57,10 +69,18 @@ class EmailFailureDoesNotLeakTests(unittest.TestCase):
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
     def test_password_reset_smtp_failure_matches_unknown_account_status(self, mock_issue_token, mock_send_email):
         known_response = self.client.post(
-            "/password-reset/request", data={"email": "known@example.com"}
+            "/password-reset/request",
+            data={
+                "email": "known@example.com",
+                "csrf_token": self._get_csrf_token("/password-reset/request"),
+            },
         )
         unknown_response = self.client.post(
-            "/password-reset/request", data={"email": "unknown@example.com"}
+            "/password-reset/request",
+            data={
+                "email": "unknown@example.com",
+                "csrf_token": self._get_csrf_token("/password-reset/request"),
+            },
         )
 
         self.assertEqual(known_response.status_code, unknown_response.status_code)
@@ -76,6 +96,7 @@ class EmailFailureDoesNotLeakTests(unittest.TestCase):
                 "last_name": "Doe",
                 "first_name": "John",
                 "password": "StrongPass123!",
+                "csrf_token": self._get_csrf_token("/register"),
             },
         )
 

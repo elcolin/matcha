@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -43,11 +44,19 @@ class PasswordResetRequestTests(unittest.TestCase):
         os.close(self.db_fd)
         os.remove(self.db_path)
 
+    def _get_csrf_token(self):
+        response = self.client.get("/password-reset/request")
+        html = response.get_data(as_text=True)
+        match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+        self.assertIsNotNone(match, "csrf_token hidden field missing from the form")
+        return match.group(1)
+
     @patch("app.auth.routes.send_email")
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
     def test_existing_account_triggers_token_and_email(self, mock_issue_token, mock_send_email):
         response = self.client.post(
-            "/password-reset/request", data={"email": "known@example.com"}
+            "/password-reset/request",
+            data={"email": "known@example.com", "csrf_token": self._get_csrf_token()},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -59,7 +68,8 @@ class PasswordResetRequestTests(unittest.TestCase):
     @patch("app.auth.routes.issue_signed_token")
     def test_unknown_account_does_not_trigger_token_or_email(self, mock_issue_token, mock_send_email):
         response = self.client.post(
-            "/password-reset/request", data={"email": "unknown@example.com"}
+            "/password-reset/request",
+            data={"email": "unknown@example.com", "csrf_token": self._get_csrf_token()},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -70,10 +80,12 @@ class PasswordResetRequestTests(unittest.TestCase):
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
     def test_response_does_not_leak_account_existence(self, mock_issue_token, mock_send_email):
         known_response = self.client.post(
-            "/password-reset/request", data={"email": "known@example.com"}
+            "/password-reset/request",
+            data={"email": "known@example.com", "csrf_token": self._get_csrf_token()},
         )
         unknown_response = self.client.post(
-            "/password-reset/request", data={"email": "unknown@example.com"}
+            "/password-reset/request",
+            data={"email": "unknown@example.com", "csrf_token": self._get_csrf_token()},
         )
 
         known_html = known_response.get_data(as_text=True)
