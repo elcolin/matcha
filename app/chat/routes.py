@@ -9,7 +9,6 @@ from app.utils import APIError, add_notification, is_blocked_between, is_match, 
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
 POLL_INTERVAL_SECONDS = 1
-HEARTBEAT_EVERY_N_POLLS = 10  # send the unread-count heartbeat every ~10s
 PRESENCE_STALE_SECONDS = 15  # how long a "viewing this chat" ping stays valid
 
 
@@ -73,7 +72,6 @@ def conversation(user_id):
     if is_blocked_between(current, user_id):
         raise APIError("Chat unavailable", 403)
 
-    print(current, user_id)
     rows = query_all(
         """
         SELECT id, sender_id, receiver_id, content, created_at, read_at
@@ -105,7 +103,32 @@ def send_message(user_id):
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
         (current, user_id, content),
     )
+
+    if not _is_viewing_chat(user_id, current):
+        add_notification(user_id, "message_received", build_notification_payload(from_user_id=current))
+
     return jsonify({"sent": True})
+
+
+@chat_bp.route("/<int:user_id>/presence", methods=["POST"])
+@login_required
+def ping_presence(user_id):
+    current = g.current_user["id"]
+    if not is_match(current, user_id):
+        raise APIError("Chat is available only for connected users", 403)
+    if is_blocked_between(current, user_id):
+        raise APIError("Chat unavailable", 403)
+
+    execute(
+        """
+        INSERT INTO chat_presence (user_id, partner_id, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, partner_id)
+        DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+        """,
+        (current, user_id),
+    )
+    return jsonify({"ok": True})
 
 
 @chat_bp.route("/stream", methods=["GET"])
@@ -126,6 +149,7 @@ def stream_events():
                     for msg in messages:
                         last_message_id = msg["id"]
                         yield f"event: message\ndata: {json.dumps(dict(msg))}\n\n"
+
                 time.sleep(POLL_INTERVAL_SECONDS)
         except GeneratorExit:
             return
