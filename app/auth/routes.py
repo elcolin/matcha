@@ -1,5 +1,4 @@
 import secrets
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
@@ -56,16 +55,21 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
     execute("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)", (user_id, token, expires_at))
 
     verify_link = url_for("auth.verify_email", token=token, _external=True)
-    send_email(
-        email,
-        "Verify your Matcha account",
-        f"""
-        <h1>Welcome to Matcha! 🐦</h1>
-        <p>Thanks for signing up, {first_name}!</p>
-        <p><a href="{verify_link}">Verify your email</a></p>
-        <p>If you did not create this account, ignore this email.</p>
-        """,
-    )
+    try:
+        send_email(
+            email,
+            "Verify your Matcha account",
+            f"""
+            <h1>Welcome to Matcha! 🐦</h1>
+            <p>Thanks for signing up, {first_name}!</p>
+            <p><a href="{verify_link}">Verify your email</a></p>
+            <p>If you did not create this account, ignore this email.</p>
+            """,
+        )
+    except Exception:
+        # Never let an SMTP failure surface as a 500: it would leak account
+        # existence via a status-code side channel elsewhere (see #61).
+        current_app.logger.exception("Failed to send verification email to user %s", user_id)
     return token
 
 
@@ -186,7 +190,6 @@ def request_password_reset():
         return render_template("forgot_password.html")
 
     identifier = str(request.form.get("email", "")).strip().lower()
-    print("Password reset requested for:", identifier)
 
     if not identifier:
         return render_template("forgot_password.html", error="Email is required")
@@ -194,33 +197,34 @@ def request_password_reset():
     user = query_one("SELECT id FROM users WHERE email = ?", (identifier,))
 
     if user:
-        return render_template("forgot_password.html", success=f"Reset link has been sent to{identifier}")
-    
-    else:
-        return render_template("forgot_password.html", error=f"No such user{identifier}")
-    
-    token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
-    ).isoformat()
-    execute(
-        "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
-        (user["id"], token, expires_at),
-    )
+        token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
+        ).isoformat()
+        execute(
+            "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
+            (user["id"], token, expires_at),
+        )
 
-    reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
-    send_email(
-        identifier,
-        "Reset your Matcha password",
-        f"""
-        <h1>Password reset</h1>
-        <p>You requested a password reset for your Matcha account</p>
-        <p><a href="{reset_link}">Reset password</a></p>
-        <p>If you did not request this, ignore this email.</p>
-        """,
-    )
+        reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
+        try:
+            send_email(
+                identifier,
+                "Reset your Matcha password",
+                f"""
+                <h1>Password reset</h1>
+                <p>You requested a password reset for your Matcha account</p>
+                <p><a href="{reset_link}">Reset password</a></p>
+                <p>If you did not request this, ignore this email.</p>
+                """,
+            )
+        except Exception:
+            # An SMTP failure here must not surface as a 500: that would
+            # only happen for existing accounts and would reintroduce an
+            # account-enumeration side channel (see #61).
+            current_app.logger.exception("Failed to send password reset email to user %s", user["id"])
 
-    return render_template("forgot_password.html", success="If your account exists, a reset link has been sent.")
+    return render_template("forgot_password.html", success="If an account exists with this email, a reset link has been sent.")
 
 @auth_bp.route("/password-reset/confirm/<token>", methods=["GET", "POST"])
 def confirm_password_reset(token):
@@ -242,6 +246,7 @@ def confirm_password_reset(token):
                     <div class="alert alert-success">{{ success }}</div>
                   {% endif %}
                   <form method="POST" action="{{ url_for('auth.confirm_password_reset', token=token) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                       <label class="form-label">New Password</label>
                       <input name="password" class="form-control" type="password" required />

@@ -7,6 +7,12 @@ class Config:
     BASE_DIR = Path(__file__).resolve().parent.parent
     DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "instance" / "matcha.db"))
 
+    # Defense in depth against CSRF (on top of the signed-token check in app.utils):
+    # cookies are not sent on cross-site requests initiated by other sites. Only set
+    # SECURE from an env flag so local HTTP dev keeps working.
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+
     UPLOAD_FOLDER = "app/static/uploads"
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 

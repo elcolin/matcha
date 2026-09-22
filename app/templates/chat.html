@@ -47,6 +47,7 @@
         <script>
   const currentUserId = {{ current_user.id }};
   const otherUserId = {{ active.id }};
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
   const messagesEl = document.getElementById('messages');
   const form = document.getElementById('send-form');
   const input = document.getElementById('message-input');
@@ -88,7 +89,7 @@
       input.value = '';
     fetch(`/chat/${otherUserId}/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({ content }),
     })
   });
@@ -104,6 +105,14 @@
   }
 
   loadMessages().then(connectStream);
+
+  // Let the server know this conversation is actively being viewed, so the
+  // recipient doesn't get a redundant notification for messages they see live.
+  function pingPresence() {
+    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+  }
+  pingPresence();
+  setInterval(pingPresence, 8000);
         </script>
     {% endif %}
 {% endblock %}

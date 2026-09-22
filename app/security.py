@@ -65,8 +65,8 @@ def validate_password_strength(password: str):
     return True, None
 
 
-def make_serializer(secret_key: str):
-    return URLSafeTimedSerializer(secret_key=secret_key, salt="matcha-auth")
+def make_serializer(secret_key: str, salt: str = "matcha-auth"):
+    return URLSafeTimedSerializer(secret_key=secret_key, salt=salt)
 
 
 def issue_signed_token(secret_key: str, purpose: str, user_id: int):
@@ -84,3 +84,33 @@ def read_signed_token(secret_key: str, token: str, purpose: str, max_age_seconds
 
 def build_notification_payload(**kwargs):
     return json.dumps(kwargs)
+
+
+CSRF_SALT = "matcha-csrf"
+
+
+def generate_csrf_token(secret_key: str):
+    """Create a new random CSRF token, signed so it can't be forged without the secret key.
+
+    The token is bound to a session (stored server-side in the signed session cookie,
+    see app.utils.get_csrf_token) rather than to a specific user, since it must also be
+    available on anonymous pages (login, register, forgot password).
+    """
+    serializer = make_serializer(secret_key, salt=CSRF_SALT)
+    return serializer.dumps({"nonce": secrets.token_urlsafe(32)})
+
+
+def csrf_token_signature_valid(secret_key: str, token: str):
+    """Check that `token` was actually issued by this app (and not tampered with).
+
+    This is a defense-in-depth check on top of the double-submit comparison done in
+    app.utils.csrf_protect (submitted token vs. the one stored in the user's session).
+    """
+    if not token:
+        return False
+    serializer = make_serializer(secret_key, salt=CSRF_SALT)
+    try:
+        serializer.loads(token)
+    except Exception:
+        return False
+    return True
