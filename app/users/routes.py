@@ -1,8 +1,8 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, g, jsonify
 
 from app.db import query_one
 from app.profile.routes import _compute_online
-from app.utils import APIError, login_required
+from app.utils import APIError, is_blocked_between, is_match, login_required
 
 users_bp = Blueprint("users", __name__)
 
@@ -20,6 +20,12 @@ def online_status(id):
     )
     if row is None:
         raise APIError("User not found", 404)
+
+    current = g.current_user["id"]
+    if not is_match(current, id):
+        raise APIError("Online status is available only for connected users", 403)
+    if is_blocked_between(current, id):
+        raise APIError("Online status unavailable", 403)
 
     return jsonify(
         {

@@ -133,6 +133,7 @@ class OnlineStatusIntegrationTests(unittest.TestCase):
     def test_users_online_status_endpoint_returns_online_flag(self):
         viewer = self._create_user("viewer4")
         target = self._create_user("target4")
+        self._make_match(viewer, target)
         self._set_online_until(target, _future_iso())
         self._login_as(viewer)
 
@@ -146,12 +147,47 @@ class OnlineStatusIntegrationTests(unittest.TestCase):
     def test_users_online_status_endpoint_returns_offline_for_unknown_activity(self):
         viewer = self._create_user("viewer5")
         target = self._create_user("target5")
+        self._make_match(viewer, target)
         self._login_as(viewer)
 
         resp = self.client.get(f"/users/{target}/online-status")
 
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.get_json()["online"])
+
+    def test_users_online_status_endpoint_returns_404_for_unknown_user(self):
+        viewer = self._create_user("viewer6")
+        self._login_as(viewer)
+
+        resp = self.client.get("/users/999999/online-status")
+
+        self.assertEqual(resp.status_code, 404)
+
+    def test_users_online_status_endpoint_forbidden_when_not_matched(self):
+        viewer = self._create_user("viewer7")
+        target = self._create_user("target7")
+        self._login_as(viewer)
+
+        resp = self.client.get(f"/users/{target}/online-status")
+
+        self.assertIn(resp.status_code, (403, 404))
+
+    def test_users_online_status_endpoint_forbidden_when_blocked(self):
+        from app.db import execute
+
+        viewer = self._create_user("viewer8")
+        target = self._create_user("target8")
+        self._make_match(viewer, target)
+        with self.app.app_context():
+            execute(
+                "INSERT INTO blocks (blocker_id, blocked_id) VALUES (?, ?)",
+                (target, viewer),
+            )
+        self._login_as(viewer)
+
+        resp = self.client.get(f"/users/{target}/online-status")
+
+        self.assertIn(resp.status_code, (403, 404))
 
 
 if __name__ == "__main__":
