@@ -14,6 +14,10 @@
                     <div class="card-body p-4">
                         <!-- NAME + AGE -->
                         <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
+                        <p class="online-status">
+                            <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
+                            {{ 'Online' if profile.online else 'Offline' }}
+                        </p>
                         <p class="text-muted">{{ profile.city }}</p>
                         <!-- BIO -->
                         <p>{{ profile.bio }}</p>
