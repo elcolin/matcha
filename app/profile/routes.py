@@ -1,4 +1,3 @@
-import json
 import secrets
 import os
 from datetime import datetime, timezone
@@ -6,7 +5,6 @@ from datetime import datetime, timezone
 from app.config import UserConfig
 from .data import UserUpdater
 from .geolocation import get_location_from_coords, check_if_city_valid
-
 
 from flask import (
     Blueprint,
@@ -347,23 +345,24 @@ def detail(id):
     profile["is_self"] = is_self
     if can_interact and not is_self:
 
-        recent_view = query_one(
-            """
-            SELECT id
-            FROM profile_views
-            WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
-            """,
-            (viewer["id"], id),
-        )
-        if not recent_view:
-            execute(
-                "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+        if not is_blocked_between(viewer["id"], id):
+            recent_view = query_one(
+                """
+                SELECT id
+                FROM profile_views
+                WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
+                """,
                 (viewer["id"], id),
             )
-        add_notification(
-            id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
-        )
-        update_popularity(id)
+            if not recent_view:
+                execute(
+                    "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+                    (viewer["id"], id),
+                )
+                add_notification(
+                    id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
+                )
+                update_popularity(id)
 
         profile["liked_by_me"] = bool(
             query_one(
@@ -481,9 +480,10 @@ def unlike_profile_form(id):
         "DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id)
     )
     if cur.rowcount:
-        add_notification(
-            id, "unliked", build_notification_payload(from_user_id=current)
-        )
+        if not is_blocked_between(current, id):
+            add_notification(
+                id, "unliked", build_notification_payload(from_user_id=current)
+            )
         update_popularity(id)
     return redirect(url_for("profile.detail", id=id))
 
@@ -578,51 +578,3 @@ def report_profile(id):
         flash("Profile reported.", "success")
         return redirect(url_for("profile.detail", id=id))
     return jsonify({"reported": True})
-
-
-@profile_bp.route("/notifications", methods=["GET"])
-@login_required
-def list_notifications():
-    current = g.current_user["id"]
-    unread_only = request.args.get("unread") == "1"
-    if unread_only:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-    else:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-
-    payload = []
-    for row in rows:
-        item = dict(row)
-        if item.get("payload"):
-            try:
-                item["payload"] = json.loads(item["payload"])
-            except Exception:
-                pass
-        payload.append(item)
-
-    return jsonify(payload)
-
-
-@profile_bp.route("/notifications/unread-count", methods=["GET"])
-@login_required
-def unread_notifications_count():
-    current = g.current_user["id"]
-    row = query_one(
-        "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0",
-        (current,),
-    )
-    return jsonify({"unread": row["c"] if row else 0})
-
-
-@profile_bp.route("/notifications/mark-read", methods=["POST"])
-@login_required
-def mark_notifications_read():
-    current = g.current_user["id"]
-    execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (current,))
-    return jsonify({"ok": True})

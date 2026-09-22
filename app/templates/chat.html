@@ -105,6 +105,14 @@
   }
 
   loadMessages().then(connectStream);
+
+  // Let the server know this conversation is actively being viewed, so the
+  // recipient doesn't get a redundant notification for messages they see live.
+  function pingPresence() {
+    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+  }
+  pingPresence();
+  setInterval(pingPresence, 8000);
         </script>
     {% endif %}
 {% endblock %}
