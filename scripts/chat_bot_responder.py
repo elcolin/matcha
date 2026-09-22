@@ -168,15 +168,37 @@ def _is_mislabeled_as_partner(candidate):
     return candidate.lower().startswith(f"{PARTNER_LABEL.lower()}:")
 
 
+def _is_echo_of_partner(candidate, partner_last):
+    """True if `candidate` just parrots back the partner's last message.
+
+    Small instruct models occasionally reply by repeating the received
+    message verbatim (case/whitespace aside) instead of generating an actual
+    reply -- e.g. answering "What's up?" with "What's up?". `partner_last` is
+    None when the bot has nothing to react to yet, in which case there is
+    nothing to echo.
+    """
+    if partner_last is None:
+        return False
+    return candidate.strip().lower() == partner_last.strip().lower()
+
+
 def generate_bot_reply(bot_id, partner_id, model=MODEL):
     """Generate a single reply from the bot to its partner, or None if it fails."""
     history = build_bot_history(conversation_history(bot_id, partner_id), bot_id)
     prompt = build_reply_prompt(history, BOT_LABEL, PARTNER_LABEL)
+    partner_last = next(
+        (text for label, text in reversed(history) if label == PARTNER_LABEL),
+        None,
+    )
 
     for _attempt in range(MAX_GENERATION_ATTEMPTS):
         raw = call_ollama(prompt, model=model)
         candidate = clean_generated_text(raw, label=BOT_LABEL)
-        if is_valid_message(candidate) and not _is_mislabeled_as_partner(candidate):
+        if (
+            is_valid_message(candidate)
+            and not _is_mislabeled_as_partner(candidate)
+            and not _is_echo_of_partner(candidate, partner_last)
+        ):
             return candidate
     return None
 

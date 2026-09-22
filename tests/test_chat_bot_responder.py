@@ -192,6 +192,56 @@ class GenerateBotReplyMislabelGuardTests(unittest.TestCase):
         self.assertEqual(reply, "Hey, nice to meet you!")
 
 
+class GenerateBotReplyEchoGuardTests(unittest.TestCase):
+    """Small instruct models sometimes just parrot back the partner's own last
+    message instead of generating an actual reply. That must be treated as an
+    invalid candidate and retried, like any other malformed generation --
+    otherwise the partner sees their own message sent back to them."""
+
+    @patch("scripts.chat_bot_responder.call_ollama")
+    @patch("scripts.chat_bot_responder.query_all")
+    def test_retries_when_model_echoes_partner_message(self, mock_query_all, mock_call_ollama):
+        mock_query_all.return_value = [{"sender_id": 2, "content": "What's up?"}]
+        mock_call_ollama.side_effect = [
+            f"{BOT_LABEL}: What's up?",
+            f"{BOT_LABEL}: Not much, you?",
+        ]
+
+        reply = generate_bot_reply(bot_id=1, partner_id=2)
+
+        self.assertEqual(reply, "Not much, you?")
+        self.assertEqual(mock_call_ollama.call_count, 2)
+
+    @patch("scripts.chat_bot_responder.call_ollama")
+    @patch("scripts.chat_bot_responder.query_all")
+    def test_echo_check_ignores_case_and_surrounding_punctuation(
+        self, mock_query_all, mock_call_ollama
+    ):
+        mock_query_all.return_value = [{"sender_id": 2, "content": "What's up?"}]
+        mock_call_ollama.side_effect = [
+            f'{BOT_LABEL}: "  WHAT\'S UP?  "',
+            f"{BOT_LABEL}: Not much, you?",
+        ]
+
+        reply = generate_bot_reply(bot_id=1, partner_id=2)
+
+        self.assertEqual(reply, "Not much, you?")
+        self.assertEqual(mock_call_ollama.call_count, 2)
+
+    @patch("scripts.chat_bot_responder.call_ollama")
+    @patch("scripts.chat_bot_responder.query_all")
+    def test_gives_up_after_max_attempts_if_always_echoed(
+        self, mock_query_all, mock_call_ollama
+    ):
+        mock_query_all.return_value = [{"sender_id": 2, "content": "What's up?"}]
+        mock_call_ollama.return_value = f"{BOT_LABEL}: What's up?"
+
+        reply = generate_bot_reply(bot_id=1, partner_id=2)
+
+        self.assertIsNone(reply)
+        self.assertEqual(mock_call_ollama.call_count, MAX_GENERATION_ATTEMPTS)
+
+
 class RunAntiLoopGuardTests(unittest.TestCase):
     """Lightweight mocked integration test: runs a single loop iteration of `run`
     with every I/O boundary mocked, to check the bot-vs-bot infinite loop guard end
