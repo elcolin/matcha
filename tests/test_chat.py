@@ -95,6 +95,11 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         with self.app.app_context():
             return query_all("SELECT * FROM notifications WHERE user_id = ?", (user_id,))
 
+    def _csrf_headers(self):
+        self.client.get("/login")
+        with self.client.session_transaction() as sess:
+            return {"X-CSRFToken": sess["csrf_token"]}
+
     def test_is_viewing_chat_true_for_fresh_presence(self):
         from app.chat.routes import _is_viewing_chat
 
@@ -130,7 +135,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self._make_match(a_id, b_id)
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/presence")
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 200)
 
         from app.chat.routes import _is_viewing_chat
@@ -139,7 +144,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
             self.assertTrue(_is_viewing_chat(a_id, b_id))
 
         # Pinging again should update (not duplicate) the row.
-        resp = self.client.post(f"/chat/{b_id}/presence")
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 200)
 
         from app.db import query_all
@@ -155,7 +160,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         a_id = self._create_user("iris")
         b_id = self._create_user("jack")
 
-        resp = self.client.post(f"/chat/{b_id}/presence")
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 401)
 
     def test_presence_ping_rejected_when_not_matched(self):
@@ -163,7 +168,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         b_id = self._create_user("laura")
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/presence")
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 403)
 
     def test_presence_ping_rejected_when_blocked(self):
@@ -173,7 +178,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self._block(b_id, a_id)
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/presence")
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 403)
 
     def test_send_message_notifies_receiver_when_not_viewing_chat(self):
@@ -182,7 +187,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self._make_match(a_id, b_id)
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "hello"})
+        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "hello"}, headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 200)
 
         notifications = self._notifications_for(b_id)
@@ -196,7 +201,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self._set_presence(b_id, a_id, seconds_ago=1)
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "hi there"})
+        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "hi there"}, headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(self._notifications_for(b_id), [])

@@ -1,10 +1,14 @@
+import secrets
 from functools import wraps
-from flask import g, jsonify, session
+from flask import current_app, g, request, session
 
 from app.db import execute, query_one
+from app.security import csrf_token_signature_valid, generate_csrf_token
 
 POPULARITY_LIKE_WEIGHT = 10
 POPULARITY_REPORT_PENALTY = 15
+
+CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 class APIError(Exception):
@@ -12,10 +16,6 @@ class APIError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
-
-
-def json_error(message, status=400):
-    return jsonify({"error": message}), status
 
 
 def login_required(fn):
@@ -26,6 +26,60 @@ def login_required(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def get_csrf_token():
+    """Return the CSRF token bound to the current session, creating one if missing.
+
+    Exposed to templates as `{{ csrf_token() }}` (see the `inject_auth` context
+    processor in app/__init__.py) so every `<form method="post">` can carry it as a
+    hidden field, and to any inline script via the `<meta name="csrf-token">` tag in
+    components/base.html.
+    """
+    token = session.get("csrf_token")
+    if not token:
+        token = generate_csrf_token(current_app.config["SECRET_KEY"])
+        session["csrf_token"] = token
+    return token
+
+
+def _submitted_csrf_token():
+    token = request.form.get("csrf_token")
+    if token:
+        return token
+
+    token = request.headers.get("X-CSRFToken")
+    if token:
+        return token
+
+    json_body = request.get_json(silent=True)
+    if isinstance(json_body, dict):
+        return json_body.get("csrf_token")
+
+    return None
+
+
+def csrf_protect():
+    """Reject state-changing requests (POST/PUT/DELETE/PATCH) without a valid CSRF token.
+
+    Wired as a global `before_request` hook (see app/__init__.py) so every mutating
+    route is covered, rather than relying on a per-view decorator that could be
+    forgotten on a new form. Safe methods (GET/HEAD/OPTIONS) are never checked.
+    """
+    if request.method in CSRF_SAFE_METHODS:
+        return
+
+    session_token = session.get("csrf_token")
+    submitted_token = _submitted_csrf_token()
+
+    valid = (
+        bool(session_token)
+        and bool(submitted_token)
+        and secrets.compare_digest(session_token, submitted_token)
+        and csrf_token_signature_valid(current_app.config["SECRET_KEY"], session_token)
+    )
+    if not valid:
+        raise APIError("Invalid or missing CSRF token", 403)
 
 
 def update_popularity(user_id: int):

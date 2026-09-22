@@ -33,6 +33,12 @@ from app.utils import (
 
 profile_bp = Blueprint("profile", __name__)
 
+
+def _is_form_request():
+    """True for a plain HTML form submission (vs. a JSON API call)."""
+    return request.get_json(silent=True) is None and not request.is_json
+
+
 def _profile_payload(user_id: int):
     row = query_one(
         """
@@ -178,9 +184,6 @@ def _update_profile(user_id: int, data):
         ),
     )
 
-    # # User core fields updates
-    # email = data.get("email") or None
-    # if (email is not None)
     UserUpdater.change_users_email(user_id, data.get("email") or None)
     UserUpdater.change_users_first_name(user_id, data.get("first_name") or None)
     UserUpdater.change_users_lastname(user_id, data.get("last_name") or None)
@@ -245,7 +248,7 @@ def _save_uploaded_photo(file_storage):
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
 
     if request.method == "POST":
         photo_file = request.files.get("photo")
@@ -418,10 +421,7 @@ def like_profile(id):
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
-    is_form = request.mimetype in (
-        "application/x-www-form-urlencoded",
-        "multipart/form-data",
-    )
+    is_form = _is_form_request()
     if request.method == "POST":
         execute(
             "INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
@@ -497,7 +497,7 @@ def unblock_profile(id):
 
     execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
 
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
@@ -545,10 +545,7 @@ def block_profile(id):
     )
     update_popularity(id)
     update_popularity(current)
-    is_form = request.mimetype in (
-        "application/x-www-form-urlencoded",
-        "multipart/form-data",
-    )
+    is_form = _is_form_request()
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
@@ -576,7 +573,7 @@ def report_profile(id):
         (current, id),
     )
     update_popularity(id)
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
     if is_form:
         flash("Profile reported.", "success")
         return redirect(url_for("profile.detail", id=id))

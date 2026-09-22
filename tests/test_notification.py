@@ -69,8 +69,17 @@ class NotificationCreationTests(unittest.TestCase):
 
     # -- helpers ------------------------------------------------------
 
+    def csrf_headers(self):
+        self.client.get("/login")
+        with self.client.session_transaction() as sess:
+            return {"X-CSRFToken": sess["csrf_token"]}
+
     def login(self, username):
-        return self.client.post("/login", data={"username": username, "password": PASSWORD})
+        return self.client.post(
+            "/login",
+            data={"username": username, "password": PASSWORD},
+            headers=self.csrf_headers(),
+        )
 
     def give_profile_photo(self, user_id):
         with self.app.app_context():
@@ -130,7 +139,7 @@ class NotificationCreationTests(unittest.TestCase):
         self.give_profile_photo(self.user_a)
         self.login("alice")
 
-        response = self.client.post(f"/profile/{self.user_b}/like", json={})
+        response = self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
         self.assertEqual(response.status_code, 200)
         notifs = self.notifications_for(self.user_b, "like_received")
@@ -141,7 +150,7 @@ class NotificationCreationTests(unittest.TestCase):
     def test_liking_without_profile_photo_returns_error_and_no_notification(self):
         self.login("alice")
 
-        response = self.client.post(f"/profile/{self.user_b}/like", json={})
+        response = self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.notifications_for(self.user_b), [])
@@ -151,10 +160,10 @@ class NotificationCreationTests(unittest.TestCase):
         self.give_profile_photo(self.user_b)
 
         self.login("alice")
-        self.client.post(f"/profile/{self.user_b}/like", json={})
+        self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
         self.login("bob")
-        response = self.client.post(f"/profile/{self.user_a}/like", json={})
+        response = self.client.post(f"/profile/{self.user_a}/like", json={}, headers=self.csrf_headers())
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["connected"])
@@ -169,9 +178,9 @@ class NotificationCreationTests(unittest.TestCase):
     def test_delete_like_creates_unliked_notification(self):
         self.give_profile_photo(self.user_a)
         self.login("alice")
-        self.client.post(f"/profile/{self.user_b}/like", json={})
+        self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
-        response = self.client.delete(f"/profile/{self.user_b}/like", json={})
+        response = self.client.delete(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.get_json()["liked_by_me"])
@@ -182,12 +191,12 @@ class NotificationCreationTests(unittest.TestCase):
     def test_unlike_form_route_notifies_only_when_a_like_existed(self):
         self.login("alice")
 
-        self.client.post(f"/profile/{self.user_b}/unlike")
+        self.client.post(f"/profile/{self.user_b}/unlike", headers=self.csrf_headers())
         self.assertEqual(self.notifications_for(self.user_b, "unliked"), [])
 
         self.give_profile_photo(self.user_a)
-        self.client.post(f"/profile/{self.user_b}/like", json={})
-        self.client.post(f"/profile/{self.user_b}/unlike")
+        self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
+        self.client.post(f"/profile/{self.user_b}/unlike", headers=self.csrf_headers())
 
         self.assertEqual(len(self.notifications_for(self.user_b, "unliked")), 1)
 
@@ -206,7 +215,7 @@ class NotificationCreationTests(unittest.TestCase):
         self.client.get(f"/profile/{self.user_b}?format=json")
 
         self.login("bob")
-        mark_read = self.client.post("/notifications/mark-read")
+        mark_read = self.client.post("/notifications/mark-read", headers=self.csrf_headers())
 
         # Post/Redirect/Get : evite le "confirmer la resoumission du formulaire"
         # du navigateur si l'utilisateur rafraichit la page apres coup.
@@ -231,7 +240,7 @@ class NotificationCreationTests(unittest.TestCase):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 401, path)
 
-        response = self.client.post("/notifications/mark-read")
+        response = self.client.post("/notifications/mark-read", headers=self.csrf_headers())
         self.assertEqual(response.status_code, 401)
 
 

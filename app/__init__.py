@@ -13,6 +13,7 @@ from app.profile.routes import profile_bp
 from app.notifications.routes import notifications_bp
 
 from app.db import close_db, init_db, query_one, execute
+from app.utils import csrf_protect, get_csrf_token
 
 load_dotenv()
 
@@ -85,6 +86,10 @@ def create_app():
                 (user_id, session_token),
             )
 
+    @app.before_request
+    def enforce_csrf():
+        csrf_protect()
+
     @app.context_processor
     def inject_auth():
         unread_count = 0
@@ -98,6 +103,7 @@ def create_app():
             "current_user": g.get("current_user"),
             "unread_notifications": unread_count,
             "logout_token": session.get("logout_token") or session.setdefault("logout_token", secrets.token_urlsafe(16)),
+            "csrf_token": get_csrf_token,
         }
 
     return app

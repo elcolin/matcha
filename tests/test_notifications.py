@@ -78,6 +78,11 @@ class BlockedUserNotificationsTests(unittest.TestCase):
                 (viewer_id, viewed_id),
             )
 
+    def _csrf_headers(self):
+        self.client.get("/login")
+        with self.client.session_transaction() as sess:
+            return {"X-CSRFToken": sess["csrf_token"]}
+
     def test_viewing_profile_of_blocking_user_sends_no_notification(self):
         a_id = self._create_user("alice")
         b_id = self._create_user("bob")
@@ -131,7 +136,7 @@ class BlockedUserNotificationsTests(unittest.TestCase):
         self._block(a_id, b_id)
         self._login_as(b_id)
 
-        resp = self.client.post(f"/profile/{a_id}/unlike")
+        resp = self.client.post(f"/profile/{a_id}/unlike", headers=self._csrf_headers())
 
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(self._notifications_for(a_id), [])

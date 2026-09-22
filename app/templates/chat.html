@@ -47,6 +47,7 @@
         <script>
   const currentUserId = {{ current_user.id }};
   const otherUserId = {{ active.id }};
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
   const messagesEl = document.getElementById('messages');
   const form = document.getElementById('send-form');
   const input = document.getElementById('message-input');
@@ -88,7 +89,7 @@
       input.value = '';
     fetch(`/chat/${otherUserId}/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({ content }),
     })
   });
