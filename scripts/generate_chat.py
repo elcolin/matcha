@@ -21,13 +21,14 @@ Usage:
 
 Requires a local Ollama server (https://ollama.com) running with a small instruct model
 pulled, e.g.:
-    ollama pull qwen2.5:0.5b
+    ollama pull qwen2.5:3b-instruct
     ollama serve
 
 The model and host can be overridden with the OLLAMA_MODEL / OLLAMA_HOST env vars.
 """
 
 MODELS = [
+    "qwen2.5:3b-instruct",
     "qwen2.5:0.5b",
     "llama3.2:1b",
 ]
@@ -158,9 +159,7 @@ def call_ollama(prompt, model=MODEL):
 def build_prompt(history, next_label):
     transcript = "\n".join(f"{label}: {text}" for label, text in history)
     intro = (
-        "You are simulating a private conversation between two people who just matched "
-        "on a dating app. Reply in English, short, natural and casual (one sentence, "
-        "20 words maximum). Don't add quotes or a prefix, write only the message."
+        "You are simulating a private conversation between two people who just matched on a dating app."
     )
     if transcript:
         return f"{intro}\n\n{transcript}\n{next_label}:"

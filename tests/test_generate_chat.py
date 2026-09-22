@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scripts.generate_chat import (
+    build_prompt,
     clean_generated_text,
     is_valid_message,
     stagger_timestamps,
@@ -47,6 +48,28 @@ class CleanGeneratedTextTests(unittest.TestCase):
             clean_generated_text("Salut !\nEt un message en trop."),
             "Salut !",
         )
+
+
+class BuildPromptTests(unittest.TestCase):
+    def test_empty_history_ends_with_bare_next_label(self):
+        prompt = build_prompt([], "A")
+        self.assertTrue(prompt.endswith("\n\nA:"))
+
+    def test_includes_full_transcript_in_order(self):
+        history = [("A", "Hey!"), ("B", "Hi, how are you?"), ("A", "Good, you?")]
+        prompt = build_prompt(history, "B")
+        transcript = "A: Hey!\nB: Hi, how are you?\nA: Good, you?"
+        self.assertTrue(prompt.endswith(f"{transcript}\nB:"))
+
+    def test_next_label_is_last_line(self):
+        prompt = build_prompt([("A", "Salut")], "B")
+        self.assertEqual(prompt.splitlines()[-1], "B:")
+
+    def test_intro_precedes_transcript_separated_by_blank_line(self):
+        prompt = build_prompt([("A", "Hey")], "B")
+        intro, rest = prompt.split("\n\n", 1)
+        self.assertTrue(intro)
+        self.assertTrue(rest.startswith("A: Hey"))
 
 
 class StaggerTimestampsTests(unittest.TestCase):

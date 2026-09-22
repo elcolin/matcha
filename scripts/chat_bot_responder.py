@@ -129,15 +129,76 @@ def conversation_history(bot_id, partner_id):
     )
 
 
+def build_reply_prompt(history, bot_label=BOT_LABEL, partner_label=PARTNER_LABEL):
+    """Prompt for a single bot reply, built on top of the shared `build_prompt`.
+
+    `build_prompt` alone (a plain alternating transcript) is not directive enough
+    for small instruct models: they can drift and complete the partner's turn
+    instead of the bot's own -- i.e. answer prefixed with `partner_label:` instead
+    of `bot_label:`. Making both "who replies" and "to what" explicit greatly
+    reduces that drift. This lives here rather than in `build_prompt` because that
+    function is shared with `generate_chat.py`, which generates both sides of a
+    conversation and has no single "partner to react to".
+    """
+    prompt = build_prompt(history, bot_label)
+
+    partner_last = next(
+        (text for label, text in reversed(history) if label == partner_label),
+        None,
+    )
+    if partner_last is None:
+        return prompt
+
+    instruction = (
+        f'Respond directly to what {partner_label} just said above ("{partner_last}"). '
+        f"You are {bot_label}; write only your own reply, never {partner_label}'s line."
+    )
+    head, next_label_line = prompt.rsplit("\n", 1)
+    return f"{head}\n{instruction}\n{next_label_line}"
+
+
+def _is_mislabeled_as_partner(candidate):
+    """True if `candidate` still carries the partner's speaker prefix.
+
+    Happens when the model drifts and completes the partner's turn instead of
+    the bot's own: `clean_generated_text` only strips the *expected*
+    (`BOT_LABEL`) prefix, so a `PARTNER_LABEL:` prefix would otherwise leak
+    verbatim into the message actually sent.
+    """
+    return candidate.lower().startswith(f"{PARTNER_LABEL.lower()}:")
+
+
+def _is_echo_of_partner(candidate, partner_last):
+    """True if `candidate` just parrots back the partner's last message.
+
+    Small instruct models occasionally reply by repeating the received
+    message verbatim (case/whitespace aside) instead of generating an actual
+    reply -- e.g. answering "What's up?" with "What's up?". `partner_last` is
+    None when the bot has nothing to react to yet, in which case there is
+    nothing to echo.
+    """
+    if partner_last is None:
+        return False
+    return candidate.strip().lower() == partner_last.strip().lower()
+
+
 def generate_bot_reply(bot_id, partner_id, model=MODEL):
     """Generate a single reply from the bot to its partner, or None if it fails."""
     history = build_bot_history(conversation_history(bot_id, partner_id), bot_id)
-    prompt = build_prompt(history, BOT_LABEL)
+    prompt = build_reply_prompt(history, BOT_LABEL, PARTNER_LABEL)
+    partner_last = next(
+        (text for label, text in reversed(history) if label == PARTNER_LABEL),
+        None,
+    )
 
     for _attempt in range(MAX_GENERATION_ATTEMPTS):
         raw = call_ollama(prompt, model=model)
         candidate = clean_generated_text(raw, label=BOT_LABEL)
-        if is_valid_message(candidate):
+        if (
+            is_valid_message(candidate)
+            and not _is_mislabeled_as_partner(candidate)
+            and not _is_echo_of_partner(candidate, partner_last)
+        ):
             return candidate
     return None
 
