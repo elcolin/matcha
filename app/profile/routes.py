@@ -40,7 +40,15 @@ def _is_form_request():
     return request.get_json(silent=True) is None and not request.is_json
 
 
-def _profile_payload(user_id: int):
+def _profile_payload(user_id: int, include_email: bool = False):
+    """Build the profile dict shared by the profile/edit/match/chat views.
+
+    `email` is deliberately left out unless `include_email=True` is passed
+    explicitly by an owner-only call site (e.g. GET /profile/edit): this
+    payload is also used for third-party profiles (candidate suggestions,
+    profile detail of another user), which must never expose someone else's
+    email address.
+    """
     row = query_one(
         """
         SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.last_seen_at, u.online_until,
@@ -78,10 +86,9 @@ def _profile_payload(user_id: int):
             timezone.utc
         )
 
-    return {
+    payload = {
         "id": row["id"],
         "username": row["username"],
-        "email": row["email"],
         "first_name": row["first_name"],
         "last_name": row["last_name"],
         "gender": row["gender"],
@@ -99,6 +106,11 @@ def _profile_payload(user_id: int):
         "tags": [r["name"] for r in tags],
         "photos": [dict(r) for r in photos],
     }
+
+    if include_email:
+        payload["email"] = row["email"]
+
+    return payload
 
 
 def _ensure_primary_photo(user_id: int):
@@ -133,7 +145,7 @@ def _pending_email_change(user_id: int):
 @profile_bp.route("/profile/edit", methods=["GET"])
 @login_required
 def edit_profile():
-    profile = _profile_payload(g.current_user["id"])
+    profile = _profile_payload(g.current_user["id"], include_email=True)
     pending_email_change = _pending_email_change(g.current_user["id"])
     return render_template(
         "profile_edit.html", profile=profile, pending_email_change=pending_email_change
@@ -236,40 +248,48 @@ def _request_email_change_and_notify(user_id: int, new_email):
     """Start a deferred email change and email the confirmation link to the
     NEW address; the active email is only updated once that link is clicked
     (see app.auth.routes.confirm_email_change). No-op if `new_email` is
-    empty or matches the currently active email.
+    empty.
+
+    Always flashes the same generic message regardless of whether the
+    change actually resulted in a token being issued (matches current
+    active email, or already used by another account): the observable
+    response must never reveal whether an email address is already
+    registered (enumeration - see fix/password-reset-enumeration for the
+    same pattern applied to the password reset flow).
     """
+    if not new_email:
+        return
+
     token = UserUpdater.request_email_change(
         user_id,
         new_email,
         current_app.config["SECRET_KEY"],
         current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
     )
-    if not token:
-        return
 
-    pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
-    confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
-    try:
-        send_email(
-            pending["new_email"],
-            "Confirm your new Matcha email address",
-            f"""
-            <h1>Confirm your new email address</h1>
-            <p>You asked to change the email address linked to your Matcha account.</p>
-            <p><a href="{confirm_link}">Confirm this change</a></p>
-            <p>If you did not request this, ignore this email: your current address stays active.</p>
-            """,
-        )
-    except Exception:
-        # Never let an SMTP failure surface as a 500, and never log the raw
-        # email address (see CLAUDE.md: no secret/PII in logs).
-        current_app.logger.exception(
-            "Failed to send email change confirmation to user %s", user_id
-        )
+    if token:
+        pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
+        confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
+        try:
+            send_email(
+                pending["new_email"],
+                "Confirm your new Matcha email address",
+                f"""
+                <h1>Confirm your new email address</h1>
+                <p>You asked to change the email address linked to your Matcha account.</p>
+                <p><a href="{confirm_link}">Confirm this change</a></p>
+                <p>If you did not request this, ignore this email: your current address stays active.</p>
+                """,
+            )
+        except Exception:
+            # Never let an SMTP failure surface as a 500, and never log the
+            # raw email address (see CLAUDE.md: no secret/PII in logs).
+            current_app.logger.exception(
+                "Failed to send email change confirmation to user %s", user_id
+            )
 
     flash(
-        "A confirmation email has been sent to the new address. "
-        "The change will take effect once you click the link.",
+        "If this address is valid, a confirmation email has been sent.",
         "success",
     )
 
@@ -454,7 +474,6 @@ def detail(id):
         )
 
     if request.args.get("format") == "json":
-        profile.pop("email", None)
         return jsonify(profile)
 
     profile["name"] = f"{profile['first_name']} {profile['last_name']}".strip()

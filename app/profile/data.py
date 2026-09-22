@@ -30,7 +30,12 @@ class UserUpdater():
             "SELECT 1 FROM users WHERE email = ? AND id != ?", (new_email, user_id)
         )
         if taken:
-            raise APIError("This email is already used by another account.")
+            # Silent no-op: never reveal that an email is already tied to
+            # another account (enumeration), the caller shows the same
+            # generic message regardless (see
+            # app.profile.routes._request_email_change_and_notify and
+            # fix/password-reset-enumeration for the same pattern).
+            return None
 
         # A new request supersedes any previous one still awaiting confirmation.
         execute(

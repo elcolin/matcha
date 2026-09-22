@@ -49,13 +49,18 @@ class RequestEmailChangeTests(DBTestCase):
         self.assertEqual(self._pending_rows(), [])
 
     @patch("app.profile.data.validate_email")
-    def test_rejects_email_already_used_by_another_account(self, mock_validate):
+    def test_email_already_used_by_another_account_is_a_silent_no_op(self, mock_validate):
+        """Must not raise: the caller shows the same generic message whether
+        the email is taken or available, to avoid leaking which emails are
+        registered (see CLAUDE.md / fix/password-reset-enumeration)."""
         self.create_user(email="taken@example.com", username="otheruser")
         mock_validate.return_value.normalized = "taken@example.com"
 
-        with self.assertRaises(APIError):
-            UserUpdater.request_email_change(self.user_id, "Taken@Example.com", "secret", 86400)
+        token = UserUpdater.request_email_change(
+            self.user_id, "Taken@Example.com", "secret", 86400
+        )
 
+        self.assertIsNone(token)
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")
         self.assertEqual(self._pending_rows(), [])

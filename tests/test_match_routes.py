@@ -149,6 +149,15 @@ class CandidateProfilesTests(DBTestCase):
 
         self.assertEqual(candidate_profiles(viewer), [])
 
+    def test_candidates_never_expose_another_users_email(self):
+        viewer = self.create_user(email="v@example.com", username="viewer")
+        other = self.create_user(email="secret@example.com", username="other")
+
+        result = candidate_profiles(viewer)
+
+        self.assertEqual([c["id"] for c in result], [other])
+        self.assertNotIn("email", result[0])
+
     def test_ranks_same_city_candidates_first(self):
         viewer = self.create_user(email="v@example.com", username="viewer")
         execute("UPDATE profiles SET city = 'Paris' WHERE user_id = ?", (viewer,))

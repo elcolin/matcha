@@ -155,6 +155,63 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
         self.assertIsNone(rows[1]["used_at"])
         self.assertEqual(rows[1]["new_email"], "second@example.com")
 
+    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_taken_email_yields_the_same_response_as_an_available_one(
+        self, mock_send_email, mock_validate
+    ):
+        """A taken email must not be distinguishable from an available one via
+        the observable response, otherwise an attacker could enumerate
+        registered addresses through /profile/edit (see
+        fix/password-reset-enumeration for the same pattern applied to the
+        password reset flow)."""
+        from app.db import execute
+        from app.security import hash_password
+
+        with self.app.app_context():
+            execute(
+                "INSERT INTO users (email, username, last_name, first_name, password_hash, email_verified) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                ("taken@example.com", "bob", "Doe", "Bob", hash_password("StrongPass123!")),
+            )
+
+        token = self._login_and_get_token()
+        taken_response = self.client.post(
+            "/profile/edit",
+            data={
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "taken@example.com",
+                "csrf_token": token,
+            },
+            follow_redirects=True,
+        )
+
+        token = self._login_and_get_token()
+        available_response = self.client.post(
+            "/profile/edit",
+            data={
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "available@example.com",
+                "csrf_token": token,
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(taken_response.status_code, available_response.status_code)
+
+        generic_message = "If this address is valid, a confirmation email has been sent."
+        self.assertIn(generic_message, taken_response.get_data(as_text=True))
+        self.assertIn(generic_message, available_response.get_data(as_text=True))
+
+        from app.db import query_one
+
+        with self.app.app_context():
+            row = query_one("SELECT email FROM users WHERE username = 'alice'")
+
+        self.assertEqual(row["email"], "old@example.com")
+
 
 if __name__ == "__main__":
     unittest.main()

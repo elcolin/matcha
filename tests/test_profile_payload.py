@@ -12,14 +12,24 @@ from tests.helpers import DBTestCase
 
 class ProfilePayloadEmailTests(DBTestCase):
     """Regression coverage for the pre-existing bug where _profile_payload never
-    selected u.email, leaving the email field on profile_edit.html always empty."""
+    selected u.email, leaving the email field on profile_edit.html always empty.
+
+    `email` must only be populated when explicitly requested via
+    `include_email=True` (owner call sites, e.g. GET /profile/edit): the
+    default must never leak a third party's email (see the `/match` and
+    `/profile/<id>` leak this guards against)."""
 
     def setUp(self):
         super().setUp()
         self.user_id = self.create_user(email="active@example.com", username="alice")
 
-    def test_includes_the_active_email(self):
+    def test_excludes_email_by_default(self):
         payload = _profile_payload(self.user_id)
+
+        self.assertNotIn("email", payload)
+
+    def test_includes_the_active_email_when_explicitly_requested(self):
+        payload = _profile_payload(self.user_id, include_email=True)
 
         self.assertEqual(payload["email"], "active@example.com")
 
@@ -34,7 +44,7 @@ class ProfilePayloadEmailTests(DBTestCase):
             ),
         )
 
-        payload = _profile_payload(self.user_id)
+        payload = _profile_payload(self.user_id, include_email=True)
 
         self.assertEqual(payload["email"], "active@example.com")
 
@@ -133,6 +143,19 @@ class ProfileDetailJsonDoesNotLeakEmailTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("email", response.get_json())
+
+    def test_html_detail_of_another_users_profile_never_contains_email(self):
+        from app.db import query_one
+
+        with self.app.app_context():
+            bob_id = query_one("SELECT id FROM users WHERE username = 'bob'")["id"]
+
+        self._login_and_get_token("alice")
+
+        response = self.client.get(f"/profile/{bob_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("bob@example.com", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":
