@@ -4,6 +4,7 @@ import time
 from flask import Blueprint, Response, g, jsonify, render_template, request, stream_with_context
 
 from app.db import execute, query_all, query_one
+from app.profile.routes import _compute_online
 from app.security import build_notification_payload
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
 
@@ -35,7 +36,7 @@ def _matches_for(user_id):
     """Users with a mutual like (i.e. a match) with the given user."""
     rows = query_all(
         """
-        SELECT u.id, u.username, u.first_name, u.last_name
+        SELECT u.id, u.username, u.first_name, u.last_name, u.last_seen_at, u.online_until
         FROM likes a
         JOIN likes b ON a.from_user_id = b.to_user_id AND a.to_user_id = b.from_user_id
         JOIN users u ON u.id = a.to_user_id
@@ -44,7 +45,12 @@ def _matches_for(user_id):
         """,
         (user_id,),
     )
-    return [dict(r) for r in rows]
+    matches = []
+    for row in rows:
+        match = dict(row)
+        match["online"] = _compute_online(match.pop("online_until"))
+        matches.append(match)
+    return matches
 
 
 @chat_bp.route("/view", methods=["GET"], defaults={"user_id": None})
