@@ -1,3 +1,5 @@
+import sqlite3
+
 from app.db import execute, query_all, query_one
 from email_validator import validate_email, EmailNotValidError
 from app.utils import (
@@ -12,17 +14,20 @@ class UserUpdater():
             new_email = valid.normalized  # cleaned-up version
         except EmailNotValidError as e:
             raise APIError(str(e))
-        execute(
-            """
-            UPDATE users
-            SET email = COALESCE(?, email)
-            WHERE id = ?
-            """,
-            (
-                new_email,
-                user_id
+        try:
+            execute(
+                """
+                UPDATE users
+                SET email = COALESCE(?, email)
+                WHERE id = ?
+                """,
+                (
+                    new_email,
+                    user_id
+                )
             )
-        )
+        except sqlite3.IntegrityError:
+            raise APIError("Cet email est déjà utilisé par un autre compte.")
     def change_users_first_name(user_id, new_first_name):
         if new_first_name is None:
             return
