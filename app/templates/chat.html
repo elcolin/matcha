@@ -9,7 +9,8 @@
                     {% for m in matches %}
                         <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
                            class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
-                            <span class="online-indicator {{ 'online' if m.online else 'offline' }}"></span>
+                            <span class="online-indicator {{ 'online' if m.online else 'offline' }}"
+                                  title="{{ 'Online' if m.online else 'Offline' }}"></span>
                             {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
                         </a>
                     {% else %}

@@ -99,6 +99,8 @@ class OnlineStatusEndToEndTests(unittest.TestCase):
 
         chat_html = self.client.get(f"/chat/view/{target}").get_data(as_text=True)
         self.assertIn('online-indicator offline', chat_html)
+        # The sidebar match indicator must not rely on color alone.
+        self.assertIn('title="Offline"', chat_html)
         # The literal 'Online now' string also appears inside the polling
         # <script> as a JS fallback value, so assert on the rendered label
         # markup instead of the raw page text.
@@ -122,6 +124,8 @@ class OnlineStatusEndToEndTests(unittest.TestCase):
         chat_html = self.client.get(f"/chat/view/{target}").get_data(as_text=True)
         self.assertIn('online-indicator online', chat_html)
         self.assertIn('Online now', chat_html)
+        # The sidebar match indicator must not rely on color alone.
+        self.assertIn('title="Online"', chat_html)
 
 
 if __name__ == "__main__":
