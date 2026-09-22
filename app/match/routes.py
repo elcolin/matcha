@@ -37,6 +37,16 @@ def shared_tag_count(current_id, candidate_id):
     )
     return rows[0]["c"] if rows else 0
 
+
+def _bucket_rank(item):
+    distance = item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM
+    if item.get("same_city"):
+        return (0, 0, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+    if item.get("same_neighborhood"):
+        return (1, 0, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+    return (2, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+
+
 def candidate_profiles(viewer_id: int):
     viewer = _profile_payload(viewer_id)
     if not viewer:
@@ -75,26 +85,8 @@ def candidate_profiles(viewer_id: int):
         candidate["same_neighborhood"] = same_neighborhood
         candidates.append(candidate)
 
-    def bucket_rank(item):
-        if item.get("same_city"):
-            return (0, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-        if item.get("same_neighborhood"):
-            return (1, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-        return (2, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+    candidates.sort(key=_bucket_rank)
 
-    candidates.sort(key=bucket_rank)
-
-    print("VIEWER:", viewer.get("city"), viewer.get("latitude"), viewer.get("longitude"))
-
-    for candidate in candidates:
-        print(
-            candidate["id"],
-            candidate.get("city"),
-            candidate.get("latitude"),
-            candidate.get("longitude"),
-            candidate.get("same_city"),
-            candidate.get("distance_km"),
-        )      
     return candidates
 
 def apply_filters(items, args):
@@ -108,14 +100,7 @@ def apply_filters(items, args):
     return [item for item in items if ok(item)]
 
 def apply_sort(items, args):
-    def bucket_rank(item):
-        if item.get("same_city"):
-            return (0, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-        if item.get("same_neighborhood"):
-            return (1, 0, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-        return (2, item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-
-    items.sort(key=bucket_rank)
+    items.sort(key=_bucket_rank)
     return items
 
 @match_bp.route("", methods=["GET"])

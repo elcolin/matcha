@@ -32,6 +32,7 @@
                                         {% if profile.liked_by_me %}
                                             <form method="post"
                                                   action="{{ url_for('profile.unlike_profile_form', id=profile.id) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <button type="submit" class="btn btn-outline-danger action-btn">Unlike</button>
                                             </form>
                                             {% if profile.liked_me %}
@@ -43,22 +44,26 @@
                                             {% if not profile.liked_by_me %}
                                                 <form method="post"
                                                       action="{{ url_for('profile.like_profile', id=profile.id) }}">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                     <button type="submit" class="btn btn-danger action-btn">Like</button>
                                                 </form>
                                             {% endif %}
                                             <form method="post"
                                                   action="{{ url_for('profile.block_profile', id=profile.id) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <button type="submit" class="btn btn-outline-secondary action-btn">Block</button>
                                             </form>
                                         {% else %}
                                             <form method="post"
                                                   action="{{ url_for('profile.unblock_profile', id=profile.id) }}">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <button type="submit" class="btn btn-outline-secondary action-btn">Unblock</button>
                                             </form>
                                         {% endif %}
                                     {% endif %}
                                     <form method="post"
                                           action="{{ url_for('profile.report_profile', id=profile.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
                                     </form>
                                 {% elif profile.is_self %}
