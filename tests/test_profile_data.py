@@ -3,42 +3,50 @@ from unittest.mock import patch
 
 from email_validator import EmailNotValidError
 
-from app.db import query_one
+from app.db import query_all, query_one
 from app.profile.data import UserUpdater
 from app.utils import APIError
 from tests.helpers import DBTestCase
 
 
-class ChangeUsersEmailTests(DBTestCase):
+class RequestEmailChangeTests(DBTestCase):
     def setUp(self):
         super().setUp()
         self.user_id = self.create_user(email="old@example.com", username="olduser")
 
+    def _pending_rows(self):
+        return query_all(
+            "SELECT * FROM email_changes WHERE user_id = ? ORDER BY id ASC",
+            (self.user_id,),
+        )
+
     def test_none_is_a_no_op(self):
-        UserUpdater.change_users_email(self.user_id, None)
+        UserUpdater.request_email_change(self.user_id, None, "secret", 86400)
 
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")
+        self.assertEqual(self._pending_rows(), [])
 
     @patch("app.profile.data.validate_email")
-    def test_valid_email_is_normalized_and_saved(self, mock_validate):
-        mock_validate.return_value.normalized = "new@example.com"
+    def test_same_as_active_email_is_a_no_op(self, mock_validate):
+        mock_validate.return_value.normalized = "old@example.com"
 
-        UserUpdater.change_users_email(self.user_id, "New@Example.com")
+        UserUpdater.request_email_change(self.user_id, "Old@Example.com", "secret", 86400)
 
-        mock_validate.assert_called_once_with("New@Example.com")
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
-        self.assertEqual(row["email"], "new@example.com")
+        self.assertEqual(row["email"], "old@example.com")
+        self.assertEqual(self._pending_rows(), [])
 
     @patch("app.profile.data.validate_email")
-    def test_invalid_email_raises_api_error_and_does_not_change_row(self, mock_validate):
+    def test_invalid_email_raises_api_error_and_does_not_change_anything(self, mock_validate):
         mock_validate.side_effect = EmailNotValidError("bad email")
 
         with self.assertRaises(APIError):
-            UserUpdater.change_users_email(self.user_id, "not-an-email")
+            UserUpdater.request_email_change(self.user_id, "not-an-email", "secret", 86400)
 
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")
+        self.assertEqual(self._pending_rows(), [])
 
     @patch("app.profile.data.validate_email")
     def test_rejects_email_already_used_by_another_account(self, mock_validate):
@@ -46,7 +54,40 @@ class ChangeUsersEmailTests(DBTestCase):
         mock_validate.return_value.normalized = "taken@example.com"
 
         with self.assertRaises(APIError):
-            UserUpdater.change_users_email(self.user_id, "Taken@Example.com")
+            UserUpdater.request_email_change(self.user_id, "Taken@Example.com", "secret", 86400)
+
+        row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
+        self.assertEqual(row["email"], "old@example.com")
+        self.assertEqual(self._pending_rows(), [])
+
+    @patch("app.profile.data.validate_email")
+    def test_valid_distinct_email_creates_pending_request_without_touching_active_email(self, mock_validate):
+        mock_validate.return_value.normalized = "new@example.com"
+
+        token = UserUpdater.request_email_change(self.user_id, "New@Example.com", "secret", 86400)
+
+        mock_validate.assert_called_once_with("New@Example.com")
+        row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
+        self.assertEqual(row["email"], "old@example.com")
+
+        pending = self._pending_rows()
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["new_email"], "new@example.com")
+        self.assertEqual(pending[0]["token"], token)
+        self.assertIsNone(pending[0]["used_at"])
+
+    @patch("app.profile.data.validate_email")
+    def test_second_request_invalidates_previous_pending_one(self, mock_validate):
+        mock_validate.return_value.normalized = "first@example.com"
+        UserUpdater.request_email_change(self.user_id, "First@Example.com", "secret", 86400)
+
+        mock_validate.return_value.normalized = "second@example.com"
+        UserUpdater.request_email_change(self.user_id, "Second@Example.com", "secret", 86400)
+
+        pending = self._pending_rows()
+        self.assertEqual(len(pending), 2)
+        self.assertIsNotNone(pending[0]["used_at"])
+        self.assertIsNone(pending[1]["used_at"])
 
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")

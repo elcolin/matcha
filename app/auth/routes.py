@@ -1,4 +1,5 @@
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
@@ -290,3 +291,78 @@ def confirm_password_reset(token):
     execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
 
     return render_form(success="Your password has been updated. You can now log in.")
+
+
+@auth_bp.route("/email-change/confirm/<token>", methods=["GET"])
+def confirm_email_change(token):
+    """Apply a deferred profile email change (see app.profile.data.UserUpdater.
+    request_email_change), which only ever inserts a pending row: the active
+    email is updated here, and only here, once the link sent to the new
+    address is actually clicked. No login_required: the click may come from a
+    different browser/session than the one that requested the change.
+    """
+
+    def render_result(message, success):
+        return (
+            render_template_string(
+                """
+                {% extends "components/base.html" %}
+                {% block title %}Matcha — Email Change{% endblock %}
+                {% block content %}
+                <div class="d-flex justify-content-center pt-5">
+                  <div class="card shadow-sm" style="width:360px">
+                    <div class="card-body p-4">
+                      <h5 class="card-title mb-3">Changement d'adresse email</h5>
+                      {% if success %}
+                        <div class="alert alert-success">{{ message }}</div>
+                      {% else %}
+                        <div class="alert alert-danger">{{ message }}</div>
+                      {% endif %}
+                      <a href="{{ url_for('auth.login') }}" class="btn btn-danger w-100">Se connecter</a>
+                    </div>
+                  </div>
+                </div>
+                {% endblock %}
+                """,
+                message=message,
+                success=success,
+            ),
+            200 if success else 400,
+        )
+
+    try:
+        user_id = read_signed_token(
+            current_app.config["SECRET_KEY"],
+            token,
+            "change_email",
+            current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
+        )
+    except Exception:
+        return render_result("Ce lien de confirmation est invalide ou a expiré.", False)
+
+    row = query_one(
+        "SELECT new_email, expires_at, used_at FROM email_changes WHERE token = ?",
+        (token,),
+    )
+    if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+        return render_result("Ce lien de confirmation n'est plus valide.", False)
+
+    try:
+        execute(
+            "UPDATE users SET email = ?, email_verified = 1 WHERE id = ?",
+            (row["new_email"], user_id),
+        )
+    except sqlite3.IntegrityError:
+        # Another account grabbed this email address before the link was clicked:
+        # consume the token anyway so it cannot be replayed, and keep the active
+        # email unchanged (see the "first confirmed wins" decision in the feature plan).
+        execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+        return render_result(
+            "Cette adresse email est déjà utilisée par un autre compte. "
+            "Votre adresse actuelle reste active.",
+            False,
+        )
+
+    execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+
+    return render_result("Votre adresse email a été mise à jour avec succès.", True)

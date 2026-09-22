@@ -60,9 +60,15 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label" for="email"> Email</label>
+                            <label class="form-label" for="email">Email</label>
                             <input class="form-control" type="text" id="email" name="email"
-                                   value="{{ profile.email | join(', ') }}" placeholder="you@example.com">
+                                   value="{{ profile.email or '' }}" placeholder="you@example.com">
+                            {% if pending_email_change %}
+                            <div class="form-text">
+                                Une demande de changement vers {{ pending_email_change.new_email }} est en attente
+                                de confirmation (vérifiez cette boîte mail).
+                            </div>
+                            {% endif %}
                         </div>
 
                         <hr>

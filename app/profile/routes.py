@@ -21,6 +21,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
+from app.email import send_email
 from app.security import build_notification_payload
 from app.utils import (
     APIError,
@@ -42,7 +43,7 @@ def _is_form_request():
 def _profile_payload(user_id: int):
     row = query_one(
         """
-        SELECT u.id, u.username, u.first_name, u.last_name, u.last_seen_at, u.online_until,
+        SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.last_seen_at, u.online_until,
                p.gender, p.sexual_preference, p.bio, p.city, p.neighborhood,
                p.latitude, p.longitude, p.location_consent_gps, p.popularity_score, p.age
         FROM users u
@@ -80,6 +81,7 @@ def _profile_payload(user_id: int):
     return {
         "id": row["id"],
         "username": row["username"],
+        "email": row["email"],
         "first_name": row["first_name"],
         "last_name": row["last_name"],
         "gender": row["gender"],
@@ -112,11 +114,30 @@ def _ensure_primary_photo(user_id: int):
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
+def _pending_email_change(user_id: int):
+    """Return the active (not used, not expired) email_changes row for this
+    user, if any, so profile_edit.html can tell the user a confirmation is
+    still pending (see app.auth.routes.confirm_email_change)."""
+    return query_one(
+        """
+        SELECT new_email
+        FROM email_changes
+        WHERE user_id = ? AND used_at IS NULL AND expires_at > ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id, datetime.now(timezone.utc).isoformat()),
+    )
+
+
 @profile_bp.route("/profile/edit", methods=["GET"])
 @login_required
 def edit_profile():
     profile = _profile_payload(g.current_user["id"])
-    return render_template("profile_edit.html", profile=profile)
+    pending_email_change = _pending_email_change(g.current_user["id"])
+    return render_template(
+        "profile_edit.html", profile=profile, pending_email_change=pending_email_change
+    )
 
 def _update_profile(user_id: int, data):
     """Shared update logic used by the plain HTML form on /profile/edit."""
@@ -184,7 +205,6 @@ def _update_profile(user_id: int, data):
         ),
     )
 
-    UserUpdater.change_users_email(user_id, data.get("email") or None)
     UserUpdater.change_users_first_name(user_id, data.get("first_name") or None)
     UserUpdater.change_users_lastname(user_id, data.get("last_name") or None)
 
@@ -212,6 +232,48 @@ def _update_profile(user_id: int, data):
     return _profile_payload(user_id)
 
 
+def _request_email_change_and_notify(user_id: int, new_email):
+    """Start a deferred email change and email the confirmation link to the
+    NEW address; the active email is only updated once that link is clicked
+    (see app.auth.routes.confirm_email_change). No-op if `new_email` is
+    empty or matches the currently active email.
+    """
+    token = UserUpdater.request_email_change(
+        user_id,
+        new_email,
+        current_app.config["SECRET_KEY"],
+        current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
+    )
+    if not token:
+        return
+
+    pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
+    confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
+    try:
+        send_email(
+            pending["new_email"],
+            "Confirmez votre nouvelle adresse email Matcha",
+            f"""
+            <h1>Confirmez votre nouvelle adresse email</h1>
+            <p>Vous avez demandé à changer l'adresse email associée à votre compte Matcha.</p>
+            <p><a href="{confirm_link}">Confirmer ce changement</a></p>
+            <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre adresse actuelle reste active.</p>
+            """,
+        )
+    except Exception:
+        # Never let an SMTP failure surface as a 500, and never log the raw
+        # email address (see CLAUDE.md: no secret/PII in logs).
+        current_app.logger.exception(
+            "Failed to send email change confirmation to user %s", user_id
+        )
+
+    flash(
+        "Un email de confirmation a été envoyé à la nouvelle adresse. "
+        "Le changement prendra effet une fois le lien cliqué.",
+        "success",
+    )
+
+
 @profile_bp.route("/profile/edit", methods=["POST"])
 @login_required
 def edit_profile_submit():
@@ -220,6 +282,7 @@ def edit_profile_submit():
         form_data = request.form.to_dict(flat=True)
         form_data.setdefault("location_consent_gps", "0")
         _update_profile(user_id, form_data)
+        _request_email_change_and_notify(user_id, form_data.get("email") or None)
     except APIError as err:
         flash(err.message, "error")
         return redirect(url_for("profile.edit_profile"))
