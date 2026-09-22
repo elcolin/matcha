@@ -30,7 +30,7 @@ class UserUpdater():
             "SELECT 1 FROM users WHERE email = ? AND id != ?", (new_email, user_id)
         )
         if taken:
-            raise APIError("Cet email est déjà utilisé par un autre compte.")
+            raise APIError("This email is already used by another account.")
 
         # A new request supersedes any previous one still awaiting confirmation.
         execute(

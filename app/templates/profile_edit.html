@@ -65,8 +65,8 @@
                                    value="{{ profile.email or '' }}" placeholder="you@example.com">
                             {% if pending_email_change %}
                             <div class="form-text">
-                                Une demande de changement vers {{ pending_email_change.new_email }} est en attente
-                                de confirmation (vérifiez cette boîte mail).
+                                A change to {{ pending_email_change.new_email }} is awaiting
+                                confirmation (check that inbox).
                             </div>
                             {% endif %}
                         </div>

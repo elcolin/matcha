@@ -252,12 +252,12 @@ def _request_email_change_and_notify(user_id: int, new_email):
     try:
         send_email(
             pending["new_email"],
-            "Confirmez votre nouvelle adresse email Matcha",
+            "Confirm your new Matcha email address",
             f"""
-            <h1>Confirmez votre nouvelle adresse email</h1>
-            <p>Vous avez demandé à changer l'adresse email associée à votre compte Matcha.</p>
-            <p><a href="{confirm_link}">Confirmer ce changement</a></p>
-            <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre adresse actuelle reste active.</p>
+            <h1>Confirm your new email address</h1>
+            <p>You asked to change the email address linked to your Matcha account.</p>
+            <p><a href="{confirm_link}">Confirm this change</a></p>
+            <p>If you did not request this, ignore this email: your current address stays active.</p>
             """,
         )
     except Exception:
@@ -268,8 +268,8 @@ def _request_email_change_and_notify(user_id: int, new_email):
         )
 
     flash(
-        "Un email de confirmation a été envoyé à la nouvelle adresse. "
-        "Le changement prendra effet une fois le lien cliqué.",
+        "A confirmation email has been sent to the new address. "
+        "The change will take effect once you click the link.",
         "success",
     )
 

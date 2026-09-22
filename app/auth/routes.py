@@ -312,13 +312,13 @@ def confirm_email_change(token):
                 <div class="d-flex justify-content-center pt-5">
                   <div class="card shadow-sm" style="width:360px">
                     <div class="card-body p-4">
-                      <h5 class="card-title mb-3">Changement d'adresse email</h5>
+                      <h5 class="card-title mb-3">Email address change</h5>
                       {% if success %}
                         <div class="alert alert-success">{{ message }}</div>
                       {% else %}
                         <div class="alert alert-danger">{{ message }}</div>
                       {% endif %}
-                      <a href="{{ url_for('auth.login') }}" class="btn btn-danger w-100">Se connecter</a>
+                      <a href="{{ url_for('auth.login') }}" class="btn btn-danger w-100">Log in</a>
                     </div>
                   </div>
                 </div>
@@ -338,14 +338,14 @@ def confirm_email_change(token):
             current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
         )
     except Exception:
-        return render_result("Ce lien de confirmation est invalide ou a expiré.", False)
+        return render_result("This confirmation link is invalid or has expired.", False)
 
     row = query_one(
         "SELECT new_email, expires_at, used_at FROM email_changes WHERE token = ?",
         (token,),
     )
     if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
-        return render_result("Ce lien de confirmation n'est plus valide.", False)
+        return render_result("This confirmation link is no longer valid.", False)
 
     try:
         execute(
@@ -358,11 +358,11 @@ def confirm_email_change(token):
         # email unchanged (see the "first confirmed wins" decision in the feature plan).
         execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
         return render_result(
-            "Cette adresse email est déjà utilisée par un autre compte. "
-            "Votre adresse actuelle reste active.",
+            "This email address is already used by another account. "
+            "Your current address stays active.",
             False,
         )
 
     execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
 
-    return render_result("Votre adresse email a été mise à jour avec succès.", True)
+    return render_result("Your email address has been updated successfully.", True)
