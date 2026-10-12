@@ -567,9 +567,11 @@ def report_profile(id):
     current = g.current_user["id"]
     if current == id:
         raise APIError("Cannot report yourself", 400)
+    if not query_one("SELECT 1 FROM users WHERE id = ?", (id,)):
+        raise APIError("Profile not found", 404)
 
     execute(
-        "INSERT OR REPLACE INTO reports (reporter_id, reported_id, reason) VALUES (?, ?, 'fake_account')",
+        "INSERT OR IGNORE INTO reports (reporter_id, reported_id, reason) VALUES (?, ?, 'fake_account')",
         (current, id),
     )
     update_popularity(id)
