@@ -4,3 +4,7 @@ instance/
 .DS_Store
 .venv/
 app/static/uploads/
+CLAUDE.md
+.claude/
+.claudian/
+.vscode/
