@@ -193,5 +193,56 @@ class ReportProfileRouteTests(ProfileReportTestCase):
         self.assertEqual(len(self._report_rows()), 1)
 
 
+class ReportedByMeTests(ProfileReportTestCase):
+    def test_json_payload_reported_by_me_false_before_report(self):
+        self._login_and_get_token("reporter")
+
+        payload = self.client.get(f"/profile/{self.ids['reported']}?format=json").get_json()
+
+        self.assertIs(payload["reported_by_me"], False)
+
+    def test_json_payload_reported_by_me_true_after_report(self):
+        token = self._login_and_get_token("reporter")
+        self._post_json_report(token, self.ids["reported"])
+
+        payload = self.client.get(f"/profile/{self.ids['reported']}?format=json").get_json()
+
+        self.assertIs(payload["reported_by_me"], True)
+
+    def test_reported_by_me_is_per_viewer(self):
+        self._sql(
+            "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?, ?, 'fake_account')",
+            (self.ids["liker"], self.ids["reported"]),
+        )
+        self._login_and_get_token("reporter")
+
+        payload = self.client.get(f"/profile/{self.ids['reported']}?format=json").get_json()
+
+        self.assertIs(payload["reported_by_me"], False)
+
+
+class ReportButtonRenderTests(ProfileReportTestCase):
+    def _report_action(self):
+        return f'action="/profile/{self.ids["reported"]}/report"'
+
+    def test_report_form_with_confirm_shown_when_not_reported(self):
+        self._login_and_get_token("reporter")
+
+        html = self.client.get(f"/profile/{self.ids['reported']}").get_data(as_text=True)
+
+        self.assertIn(self._report_action(), html)
+        self.assertIn("return confirm('Report this profile as a fake account?');", html)
+        self.assertNotIn(">Reported<", html)
+
+    def test_disabled_reported_button_shown_after_report(self):
+        token = self._login_and_get_token("reporter")
+        self._post_json_report(token, self.ids["reported"])
+
+        html = self.client.get(f"/profile/{self.ids['reported']}").get_data(as_text=True)
+
+        self.assertNotIn(self._report_action(), html)
+        self.assertRegex(html, r'<button[^>]*\bdisabled\b[^>]*aria-disabled="true"[^>]*>Reported</button>')
+
+
 if __name__ == "__main__":
     unittest.main()

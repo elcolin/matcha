@@ -389,6 +389,12 @@ def detail(id):
                 (id, viewer["id"]),
             )
         )
+        profile["reported_by_me"] = bool(
+            query_one(
+                "SELECT 1 FROM reports WHERE reporter_id = ? AND reported_id = ?",
+                (viewer["id"], id),
+            )
+        )
 
     if request.args.get("format") == "json":
         profile.pop("email", None)
