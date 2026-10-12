@@ -64,8 +64,8 @@ class RegistrationFlowTests(unittest.TestCase):
                 "username": "newuser",
                 "first_name": "New",
                 "last_name": "User",
-                "password": "StrongPass123!",
-                "confirm": "StrongPass123!",
+                "password": "J8#qL2!vX9@p",
+                "confirm": "J8#qL2!vX9@p",
             },
         )
 
