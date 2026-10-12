@@ -39,6 +39,13 @@ def _is_form_request():
     return request.get_json(silent=True) is None and not request.is_json
 
 
+def _compute_online(online_until: str | None) -> bool:
+    """True if `online_until` (ISO timestamp, see app/__init__.py) is in the future."""
+    if not online_until:
+        return False
+    return datetime.fromisoformat(online_until) > datetime.now(timezone.utc)
+
+
 def _profile_payload(user_id: int):
     row = query_one(
         """
@@ -71,11 +78,7 @@ def _profile_payload(user_id: int):
         (user_id,),
     )
 
-    online = False
-    if row["online_until"]:
-        online = datetime.fromisoformat(row["online_until"]) > datetime.now(
-            timezone.utc
-        )
+    online = _compute_online(row["online_until"])
 
     return {
         "id": row["id"],
