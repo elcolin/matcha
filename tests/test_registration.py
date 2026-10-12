@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +19,12 @@ class RegistrationFlowTests(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
 
+    def _get_csrf_token(self):
+        response = self.client.get("/register")
+        match = re.search(r'name="csrf_token" value="([^"]+)"', response.get_data(as_text=True))
+        self.assertIsNotNone(match, "csrf_token hidden field missing from /register")
+        return match.group(1)
+
     def tearDown(self):
         Config.DATABASE_PATH = self._original_db_path
         os.close(self.db_fd)
@@ -31,8 +38,9 @@ class RegistrationFlowTests(unittest.TestCase):
                 "username": "alice",
                 "first_name": "Alice",
                 "last_name": "Tester",
-                "password": "StrongPass123!",
+                "password": "J8#qL2!vX9@p",
                 "confirm": "DifferentPass123!",
+                "csrf_token": self._get_csrf_token(),
             },
         )
 
@@ -47,8 +55,9 @@ class RegistrationFlowTests(unittest.TestCase):
                 "username": "alice2",
                 "first_name": "Alice",
                 "last_name": "Tester",
-                "password": "StrongPass123!",
-                "confirm": "StrongPass123!",
+                "password": "J8#qL2!vX9@p",
+                "confirm": "J8#qL2!vX9@p",
+                "csrf_token": self._get_csrf_token(),
             },
         )
 
@@ -66,6 +75,7 @@ class RegistrationFlowTests(unittest.TestCase):
                 "last_name": "User",
                 "password": "J8#qL2!vX9@p",
                 "confirm": "J8#qL2!vX9@p",
+                "csrf_token": self._get_csrf_token(),
             },
         )
 
