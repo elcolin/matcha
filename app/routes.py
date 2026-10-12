@@ -30,6 +30,7 @@ def home():
                 "interests": item.get("tags", [])[:5],
                 "bio": item.get("bio") or "",
                 "image": image or "https://placehold.co/600x400?text=Matcha",
+                "online": item.get("online", False),
             })
         return render_template("index.html", name="Matcha User", profiles=profiles, show_profiles=True)
 

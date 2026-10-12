@@ -56,16 +56,21 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
     execute("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)", (user_id, token, expires_at))
 
     verify_link = url_for("auth.verify_email", token=token, _external=True)
-    send_email(
-        email,
-        "Verify your Matcha account",
-        f"""
-        <h1>Welcome to Matcha! 🐦</h1>
-        <p>Thanks for signing up, {first_name}!</p>
-        <p><a href="{verify_link}">Verify your email</a></p>
-        <p>If you did not create this account, ignore this email.</p>
-        """,
-    )
+    try:
+        send_email(
+            email,
+            "Verify your Matcha account",
+            f"""
+            <h1>Welcome to Matcha! 🐦</h1>
+            <p>Thanks for signing up, {first_name}!</p>
+            <p><a href="{verify_link}">Verify your email</a></p>
+            <p>If you did not create this account, ignore this email.</p>
+            """,
+        )
+    except Exception:
+        # Never let an SMTP failure surface as a 500: it would leak account
+        # existence via a status-code side channel elsewhere (see #61).
+        current_app.logger.exception("Failed to send verification email to user %s", user_id)
     return token
 
 
@@ -186,7 +191,6 @@ def request_password_reset():
         return render_template("forgot_password.html")
 
     identifier = str(request.form.get("email", "")).strip().lower()
-    print("Password reset requested for:", identifier)
 
     if not identifier:
         return render_template("forgot_password.html", error="Email is required")
@@ -194,33 +198,34 @@ def request_password_reset():
     user = query_one("SELECT id FROM users WHERE email = ?", (identifier,))
 
     if user:
-        return render_template("forgot_password.html", success=f"Reset link has been sent to{identifier}")
-    
-    else:
-        return render_template("forgot_password.html", error=f"No such user{identifier}")
-    
-    token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
-    ).isoformat()
-    execute(
-        "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
-        (user["id"], token, expires_at),
-    )
+        token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=current_app.config["PASSWORD_RESET_TTL_SECONDS"])
+        ).isoformat()
+        execute(
+            "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
+            (user["id"], token, expires_at),
+        )
 
-    reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
-    send_email(
-        identifier,
-        "Reset your Matcha password",
-        f"""
-        <h1>Password reset</h1>
-        <p>You requested a password reset for your Matcha account</p>
-        <p><a href="{reset_link}">Reset password</a></p>
-        <p>If you did not request this, ignore this email.</p>
-        """,
-    )
+        reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
+        try:
+            send_email(
+                identifier,
+                "Reset your Matcha password",
+                f"""
+                <h1>Password reset</h1>
+                <p>You requested a password reset for your Matcha account</p>
+                <p><a href="{reset_link}">Reset password</a></p>
+                <p>If you did not request this, ignore this email.</p>
+                """,
+            )
+        except Exception:
+            # An SMTP failure here must not surface as a 500: that would
+            # only happen for existing accounts and would reintroduce an
+            # account-enumeration side channel (see #61).
+            current_app.logger.exception("Failed to send password reset email to user %s", user["id"])
 
-    return render_template("forgot_password.html", success="If your account exists, a reset link has been sent.")
+    return render_template("forgot_password.html", success="If an account exists with this email, a reset link has been sent.")
 
 @auth_bp.route("/password-reset/confirm/<token>", methods=["GET", "POST"])
 def confirm_password_reset(token):
@@ -242,6 +247,7 @@ def confirm_password_reset(token):
                     <div class="alert alert-success">{{ success }}</div>
                   {% endif %}
                   <form method="POST" action="{{ url_for('auth.confirm_password_reset', token=token) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                       <label class="form-label">New Password</label>
                       <input name="password" class="form-control" type="password" required />
@@ -285,3 +291,78 @@ def confirm_password_reset(token):
     execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
 
     return render_form(success="Your password has been updated. You can now log in.")
+
+
+@auth_bp.route("/email-change/confirm/<token>", methods=["GET"])
+def confirm_email_change(token):
+    """Apply a deferred profile email change (see app.profile.data.UserUpdater.
+    request_email_change), which only ever inserts a pending row: the active
+    email is updated here, and only here, once the link sent to the new
+    address is actually clicked. No login_required: the click may come from a
+    different browser/session than the one that requested the change.
+    """
+
+    def render_result(message, success):
+        return (
+            render_template_string(
+                """
+                {% extends "components/base.html" %}
+                {% block title %}Matcha — Email Change{% endblock %}
+                {% block content %}
+                <div class="d-flex justify-content-center pt-5">
+                  <div class="card shadow-sm" style="width:360px">
+                    <div class="card-body p-4">
+                      <h5 class="card-title mb-3">Email address change</h5>
+                      {% if success %}
+                        <div class="alert alert-success">{{ message }}</div>
+                      {% else %}
+                        <div class="alert alert-danger">{{ message }}</div>
+                      {% endif %}
+                      <a href="{{ url_for('auth.login') }}" class="btn btn-danger w-100">Log in</a>
+                    </div>
+                  </div>
+                </div>
+                {% endblock %}
+                """,
+                message=message,
+                success=success,
+            ),
+            200 if success else 400,
+        )
+
+    try:
+        user_id = read_signed_token(
+            current_app.config["SECRET_KEY"],
+            token,
+            "change_email",
+            current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
+        )
+    except Exception:
+        return render_result("This confirmation link is invalid or has expired.", False)
+
+    row = query_one(
+        "SELECT new_email, expires_at, used_at FROM email_changes WHERE token = ?",
+        (token,),
+    )
+    if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+        return render_result("This confirmation link is no longer valid.", False)
+
+    try:
+        execute(
+            "UPDATE users SET email = ?, email_verified = 1 WHERE id = ?",
+            (row["new_email"], user_id),
+        )
+    except sqlite3.IntegrityError:
+        # Another account grabbed this email address before the link was clicked:
+        # consume the token anyway so it cannot be replayed, and keep the active
+        # email unchanged (see the "first confirmed wins" decision in the feature plan).
+        execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+        return render_result(
+            "This email address is already used by another account. "
+            "Your current address stays active.",
+            False,
+        )
+
+    execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+
+    return render_result("Your email address has been updated successfully.", True)

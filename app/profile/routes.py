@@ -1,4 +1,3 @@
-import json
 import secrets
 import os
 from datetime import datetime, timezone
@@ -6,7 +5,6 @@ from datetime import datetime, timezone
 from app.config import UserConfig
 from .data import UserUpdater
 from .geolocation import get_location_from_coords, check_if_city_valid
-
 
 from flask import (
     Blueprint,
@@ -23,6 +21,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
+from app.email import send_email
 from app.security import build_notification_payload
 from app.utils import (
     APIError,
@@ -35,10 +34,31 @@ from app.utils import (
 
 profile_bp = Blueprint("profile", __name__)
 
-def _profile_payload(user_id: int):
+
+def _is_form_request():
+    """True for a plain HTML form submission (vs. a JSON API call)."""
+    return request.get_json(silent=True) is None and not request.is_json
+
+
+def _compute_online(online_until: str | None) -> bool:
+    """True if `online_until` (ISO timestamp, see app/__init__.py) is in the future."""
+    if not online_until:
+        return False
+    return datetime.fromisoformat(online_until) > datetime.now(timezone.utc)
+
+
+def _profile_payload(user_id: int, include_email: bool = False):
+    """Build the profile dict shared by the profile/edit/match/chat views.
+
+    `email` is deliberately left out unless `include_email=True` is passed
+    explicitly by an owner-only call site (e.g. GET /profile/edit): this
+    payload is also used for third-party profiles (candidate suggestions,
+    profile detail of another user), which must never expose someone else's
+    email address.
+    """
     row = query_one(
         """
-        SELECT u.id, u.username, u.first_name, u.last_name, u.last_seen_at, u.online_until,
+        SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.last_seen_at, u.online_until,
                p.gender, p.sexual_preference, p.bio, p.city, p.neighborhood,
                p.latitude, p.longitude, p.location_consent_gps, p.popularity_score, p.age
         FROM users u
@@ -67,13 +87,9 @@ def _profile_payload(user_id: int):
         (user_id,),
     )
 
-    online = False
-    if row["online_until"]:
-        online = datetime.fromisoformat(row["online_until"]) > datetime.now(
-            timezone.utc
-        )
+    online = _compute_online(row["online_until"])
 
-    return {
+    payload = {
         "id": row["id"],
         "username": row["username"],
         "first_name": row["first_name"],
@@ -94,6 +110,11 @@ def _profile_payload(user_id: int):
         "photos": [dict(r) for r in photos],
     }
 
+    if include_email:
+        payload["email"] = row["email"]
+
+    return payload
+
 
 def _ensure_primary_photo(user_id: int):
     profile_photo = query_one(
@@ -108,11 +129,30 @@ def _ensure_primary_photo(user_id: int):
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
+def _pending_email_change(user_id: int):
+    """Return the active (not used, not expired) email_changes row for this
+    user, if any, so profile_edit.html can tell the user a confirmation is
+    still pending (see app.auth.routes.confirm_email_change)."""
+    return query_one(
+        """
+        SELECT new_email
+        FROM email_changes
+        WHERE user_id = ? AND used_at IS NULL AND expires_at > ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id, datetime.now(timezone.utc).isoformat()),
+    )
+
+
 @profile_bp.route("/profile/edit", methods=["GET"])
 @login_required
 def edit_profile():
-    profile = _profile_payload(g.current_user["id"])
-    return render_template("profile_edit.html", profile=profile)
+    profile = _profile_payload(g.current_user["id"], include_email=True)
+    pending_email_change = _pending_email_change(g.current_user["id"])
+    return render_template(
+        "profile_edit.html", profile=profile, pending_email_change=pending_email_change
+    )
 
 def _update_profile(user_id: int, data):
     """Shared update logic used by the plain HTML form on /profile/edit."""
@@ -180,10 +220,6 @@ def _update_profile(user_id: int, data):
         ),
     )
 
-    # # User core fields updates
-    # email = data.get("email") or None
-    # if (email is not None)
-    UserUpdater.change_users_email(user_id, data.get("email") or None)
     UserUpdater.change_users_first_name(user_id, data.get("first_name") or None)
     UserUpdater.change_users_lastname(user_id, data.get("last_name") or None)
 
@@ -211,6 +247,56 @@ def _update_profile(user_id: int, data):
     return _profile_payload(user_id)
 
 
+def _request_email_change_and_notify(user_id: int, new_email):
+    """Start a deferred email change and email the confirmation link to the
+    NEW address; the active email is only updated once that link is clicked
+    (see app.auth.routes.confirm_email_change). No-op if `new_email` is
+    empty.
+
+    Always flashes the same generic message regardless of whether the
+    change actually resulted in a token being issued (matches current
+    active email, or already used by another account): the observable
+    response must never reveal whether an email address is already
+    registered (enumeration - see fix/password-reset-enumeration for the
+    same pattern applied to the password reset flow).
+    """
+    if not new_email:
+        return
+
+    token = UserUpdater.request_email_change(
+        user_id,
+        new_email,
+        current_app.config["SECRET_KEY"],
+        current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
+    )
+
+    if token:
+        pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
+        confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
+        try:
+            send_email(
+                pending["new_email"],
+                "Confirm your new Matcha email address",
+                f"""
+                <h1>Confirm your new email address</h1>
+                <p>You asked to change the email address linked to your Matcha account.</p>
+                <p><a href="{confirm_link}">Confirm this change</a></p>
+                <p>If you did not request this, ignore this email: your current address stays active.</p>
+                """,
+            )
+        except Exception:
+            # Never let an SMTP failure surface as a 500, and never log the
+            # raw email address (see CLAUDE.md: no secret/PII in logs).
+            current_app.logger.exception(
+                "Failed to send email change confirmation to user %s", user_id
+            )
+
+    flash(
+        "If this address is valid, a confirmation email has been sent.",
+        "success",
+    )
+
+
 @profile_bp.route("/profile/edit", methods=["POST"])
 @login_required
 def edit_profile_submit():
@@ -219,6 +305,7 @@ def edit_profile_submit():
         form_data = request.form.to_dict(flat=True)
         form_data.setdefault("location_consent_gps", "0")
         _update_profile(user_id, form_data)
+        _request_email_change_and_notify(user_id, form_data.get("email") or None)
     except APIError as err:
         flash(err.message, "error")
         return redirect(url_for("profile.edit_profile"))
@@ -247,7 +334,7 @@ def _save_uploaded_photo(file_storage):
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
 
     if request.method == "POST":
         photo_file = request.files.get("photo")
@@ -344,23 +431,24 @@ def detail(id):
     profile["is_self"] = is_self
     if can_interact and not is_self:
 
-        recent_view = query_one(
-            """
-            SELECT id
-            FROM profile_views
-            WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
-            """,
-            (viewer["id"], id),
-        )
-        if not recent_view:
-            execute(
-                "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+        if not is_blocked_between(viewer["id"], id):
+            recent_view = query_one(
+                """
+                SELECT id
+                FROM profile_views
+                WHERE viewer_id = ? AND viewed_id = ? AND created_at >= datetime('now', '-1 day')
+                """,
                 (viewer["id"], id),
             )
-        add_notification(
-            id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
-        )
-        update_popularity(id)
+            if not recent_view:
+                execute(
+                    "INSERT INTO profile_views (viewer_id, viewed_id) VALUES (?, ?)",
+                    (viewer["id"], id),
+                )
+                add_notification(
+                    id, "profile_view", build_notification_payload(viewer_id=viewer["id"])
+                )
+                update_popularity(id)
 
         profile["liked_by_me"] = bool(
             query_one(
@@ -389,7 +477,6 @@ def detail(id):
         )
 
     if request.args.get("format") == "json":
-        profile.pop("email", None)
         return jsonify(profile)
 
     profile["name"] = f"{profile['first_name']} {profile['last_name']}".strip()
@@ -419,10 +506,7 @@ def like_profile(id):
     if not my_photo:
         raise APIError("You need a profile photo to like someone", 400)
 
-    is_form = request.mimetype in (
-        "application/x-www-form-urlencoded",
-        "multipart/form-data",
-    )
+    is_form = _is_form_request()
     if request.method == "POST":
         execute(
             "INSERT OR IGNORE INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
@@ -481,9 +565,10 @@ def unlike_profile_form(id):
         "DELETE FROM likes WHERE from_user_id = ? AND to_user_id = ?", (current, id)
     )
     if cur.rowcount:
-        add_notification(
-            id, "unliked", build_notification_payload(from_user_id=current)
-        )
+        if not is_blocked_between(current, id):
+            add_notification(
+                id, "unliked", build_notification_payload(from_user_id=current)
+            )
         update_popularity(id)
     return redirect(url_for("profile.detail", id=id))
 
@@ -497,7 +582,7 @@ def unblock_profile(id):
 
     execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (current, id))
 
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
@@ -545,10 +630,7 @@ def block_profile(id):
     )
     update_popularity(id)
     update_popularity(current)
-    is_form = request.mimetype in (
-        "application/x-www-form-urlencoded",
-        "multipart/form-data",
-    )
+    is_form = _is_form_request()
     if is_form:
         return redirect(url_for("profile.detail", id=id))
 
@@ -576,56 +658,8 @@ def report_profile(id):
         (current, id),
     )
     update_popularity(id)
-    is_form = request.get_json(silent=True) is None and not request.is_json
+    is_form = _is_form_request()
     if is_form:
         flash("Profile reported.", "success")
         return redirect(url_for("profile.detail", id=id))
     return jsonify({"reported": True})
-
-
-@profile_bp.route("/notifications", methods=["GET"])
-@login_required
-def list_notifications():
-    current = g.current_user["id"]
-    unread_only = request.args.get("unread") == "1"
-    if unread_only:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-    else:
-        rows = query_all(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100",
-            (current,),
-        )
-
-    payload = []
-    for row in rows:
-        item = dict(row)
-        if item.get("payload"):
-            try:
-                item["payload"] = json.loads(item["payload"])
-            except Exception:
-                pass
-        payload.append(item)
-
-    return jsonify(payload)
-
-
-@profile_bp.route("/notifications/unread-count", methods=["GET"])
-@login_required
-def unread_notifications_count():
-    current = g.current_user["id"]
-    row = query_one(
-        "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0",
-        (current,),
-    )
-    return jsonify({"unread": row["c"] if row else 0})
-
-
-@profile_bp.route("/notifications/mark-read", methods=["POST"])
-@login_required
-def mark_notifications_read():
-    current = g.current_user["id"]
-    execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (current,))
-    return jsonify({"ok": True})
