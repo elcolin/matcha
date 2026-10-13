@@ -75,8 +75,6 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
-
-
 def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     if ai:
         try:
@@ -93,7 +91,7 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     popularity_score = random.randint(0, 5)
     updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
-    latitude_raw, longitude_raw, city, country, _timezone = fake.local_latlng(country_code="FR")
+    latitude_raw, longitude_raw, city, _country, _timezone = fake.local_latlng(country_code="FR")
     latitude = float(latitude_raw)
     longitude = float(longitude_raw)
     jitter_lat = latitude + random.uniform(-0.03, 0.03)
@@ -104,17 +102,16 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
 
     execute(
         """INSERT INTO profiles
-           (user_id, gender, sexual_preference, bio, city, country, neighborhood,
+           (user_id, gender, sexual_preference, bio, city, neighborhood,
             latitude, longitude, location_consent_gps, popularity_score,
             age, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             gender,
             sexual_preference,
             bio,
             city,
-            country,
             neighborhood,
             latitude,
             longitude,
