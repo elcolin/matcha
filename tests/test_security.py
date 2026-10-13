@@ -15,7 +15,7 @@ class SecurityHelpersTests(unittest.TestCase):
         self.assertFalse(security.verify_password(password_hash, "WrongPass123!"))
 
     def test_validate_password_strength_accepts_valid_password(self):
-        ok, message = security.validate_password_strength("StrongPass123!")
+        ok, message = security.validate_password_strength("J8#qL2!vX9@p")
 
         self.assertTrue(ok)
         self.assertIsNone(message)
@@ -26,16 +26,11 @@ class SecurityHelpersTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(message, "Password must be at least 10 characters long")
 
-    def test_validate_password_strength_rejects_common_password(self):
-        password = "UniquePass123!"
-        security.COMMON_ENGLISH_PASSWORDS.add(password.lower())
-        try:
-            ok, message = security.validate_password_strength(password)
-        finally:
-            security.COMMON_ENGLISH_PASSWORDS.discard(password.lower())
+    def test_validate_password_strength_rejects_common_word(self):
+        ok, message = security.validate_password_strength("Password123!")
 
         self.assertFalse(ok)
-        self.assertEqual(message, "Password cannot be a common English word")
+        self.assertIn("Password contains a common word", message)
 
     def test_signed_token_roundtrip(self):
         token = security.issue_signed_token("test-secret", "verify-email", 42)
