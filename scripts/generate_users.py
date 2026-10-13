@@ -8,6 +8,13 @@ from faker import Faker
 from app.config import UserConfig
 from app import create_app
 from app.db import execute
+import requests
+import time
+import os
+
+API_IMAGES1 = os.getenv("API_IMAGES1")
+API_IMAGES2 = os.getenv("API_IMAGES2")
+LOCAL_PLACEHOLDER = os.getenv("LOCAL_PLACEHOLDER")
 
 """
 Usage:
@@ -27,8 +34,22 @@ def random_last_seen(created_at: datetime):
     return min(created_at + timedelta(days=random.randint(0, 700)), datetime.now())
 
 
+def next_user_id():
+    return execute(
+        """
+        SELECT COALESCE(MAX(id), 0) + 1
+        FROM (
+            SELECT id FROM users
+            UNION ALL
+            SELECT user_id AS id FROM profiles
+        )
+        """
+    ).fetchone()[0]
+
+
 def generate_user(max_attempts: int = 10):
     for attempt in range(max_attempts):
+        user_id = next_user_id()
         first = fake.first_name()
         last = fake.last_name()
         email = fake.unique.email()
@@ -41,10 +62,11 @@ def generate_user(max_attempts: int = 10):
         try:
             cur = execute(
                 """INSERT INTO users
-                   (email, username, last_name, first_name, password_hash,
+                   (id, email, username, last_name, first_name, password_hash,
                     email_verified, created_at, last_seen_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
+                    user_id,
                     email,
                     username,
                     last,
@@ -57,7 +79,7 @@ def generate_user(max_attempts: int = 10):
             )
 
             return {
-                "id": cur.lastrowid,
+                "id": user_id,
                 "email": email,
                 "username": username,
                 "first_name": first,
@@ -188,11 +210,46 @@ def create_profiles(users, ai: bool = False):
     for user in users:
         generate_profile(user["id"], user["created_at"], ai=ai)
 
+
 def generate_photos(count):
-    return [
-        f"https://loremflickr.com/400/400/bird?lock={random.randint(1, 100000)}"
-        for _ in range(count)
-    ]
+    if count <= 0:
+        return []
+
+    urls = []
+    page = 1
+    
+    while len(urls) < count:
+        try:
+            res = requests.get(
+                API_IMAGES1,
+                params={"taxon_id": 3, "has[]": "photos", "quality_grade": "research", "per_page": 100, "page": page},
+                headers={"User-Agent": "LocalTestApp/1.0"},
+                timeout=5 
+            )
+            if res.status_code != 200 or not res.json().get("results"):
+                break
+            for obs in res.json().get("results", []):
+                if photos := obs.get("photos"):
+                    urls.append(photos[0]["url"].replace("square", "medium"))
+        except requests.RequestException:
+            break
+        page += 1
+        if len(urls) < count:
+            time.sleep(1)
+
+    if not urls:
+        try:
+            check = requests.head(API_IMAGES2, timeout=2)
+            if check.status_code in (200, 301, 302):
+                urls = [
+                    f"{API_IMAGES2}?lock={random.randint(1, 100000)}"
+                    for _ in range(count)
+                ]
+            else:
+                urls = [LOCAL_PLACEHOLDER]
+        except requests.RequestException:
+            urls = [LOCAL_PLACEHOLDER]
+    return (urls * (count // len(urls) + 1))[:count]
 
 def create_photos(users, photos_per_user=5):
     """Create photos for each user (accepts list of user dicts)."""
