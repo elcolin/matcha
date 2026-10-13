@@ -2,6 +2,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 
 from app.db import execute, query_one
@@ -81,21 +82,30 @@ def register():
 
     data = request.get_json(silent=True) or request.form
 
-    required = ["email", "username", "last_name", "first_name", "password"]
+    required = ["email", "username", "last_name", "first_name", "password", "confirm"]
     missing = [f for f in required if not str(data.get(f, "")).strip()]
     if missing:
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
-    is_ok, reason = validate_password_strength(data["password"])
+    try:
+        email = validate_email(data["email"].strip(), check_deliverability=False).normalized
+    except EmailNotValidError:
+        return render_template("register.html", error="Invalid email address")
+
+    password = str(data["password"])
+    if password != str(data["confirm"]):
+        return render_template("register.html", error="Passwords do not match")
+
+    is_ok, reason = validate_password_strength(password)
     if not is_ok:
         return render_template("register.html", error=reason)
 
     try:
         cur = execute(
             "INSERT INTO users (email, username, last_name, first_name, password_hash) VALUES (?, ?, ?, ?, ?)",
-            (data["email"].strip().lower(), data["username"].strip(),
+            (email, data["username"].strip(),
              data["last_name"].strip(), data["first_name"].strip(),
-             hash_password(data["password"])),
+             hash_password(password)),
         )
     except Exception:
         return render_template("register.html", error="Email or username already exists")
@@ -103,11 +113,11 @@ def register():
     user_id = cur.lastrowid
     _ensure_profile_exists(user_id)
 
-    send_verification_email(user_id, data["email"].strip().lower(), data["first_name"].strip())
+    send_verification_email(user_id, email, data["first_name"].strip())
 
     return render_template(
         "register.html",
-        success=f"Account created! Check {data['email'].strip().lower()} for your verification email.",
+        success=f"Account created! Check {email} for your verification email.",
     )
 
 

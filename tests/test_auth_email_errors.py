@@ -95,7 +95,8 @@ class EmailFailureDoesNotLeakTests(unittest.TestCase):
                 "username": "newuser",
                 "last_name": "Doe",
                 "first_name": "John",
-                "password": "StrongPass123!",
+                "password": "J8#qL2!vX9@p",
+                "confirm": "J8#qL2!vX9@p",
                 "csrf_token": self._get_csrf_token("/register"),
             },
         )
