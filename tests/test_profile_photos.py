@@ -267,6 +267,32 @@ class SaveUploadedPhotoTests(DBTestCase):
                     self.assertEqual(stored.format, fmt)
                     self.assertEqual(stored.n_frames, 3)
 
+    def test_animated_png_keeps_all_its_frames(self):
+        content = _animated_bytes("PNG", 3)
+        with Image.open(BytesIO(content)) as original:
+            self.assertEqual(original.n_frames, 3)
+
+        url = _save_uploaded_photo(_photo(content, "anim.png"))
+
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.format, "PNG")
+            self.assertEqual(stored.n_frames, 3)
+
+    def test_multi_picture_jpeg_is_stored_as_a_single_frame_jpeg(self):
+        frames = [Image.new("RGB", (4, 4), color) for color in ("red", "blue")]
+        buf = BytesIO()
+        frames[0].save(buf, format="MPO", save_all=True, append_images=frames[1:])
+        with Image.open(BytesIO(buf.getvalue())) as original:
+            self.assertEqual((original.format, original.n_frames), ("MPO", 2))
+
+        url = _save_uploaded_photo(_photo(buf.getvalue(), "photo.jpg"))
+
+        self.assertTrue(url.endswith(".jpg"))
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.format, "JPEG")
+            self.assertEqual(getattr(stored, "n_frames", 1), 1)
+            self.assertEqual(stored.size, (4, 4))
+
     def test_animation_at_the_frame_cap_is_accepted(self):
         content = _animated_bytes("GIF", 100)
         with Image.open(BytesIO(content)) as original:

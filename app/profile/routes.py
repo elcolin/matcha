@@ -332,7 +332,9 @@ PHOTO_FORMAT_ERROR = "Photo must be a PNG, JPEG, GIF or WebP image"
 # DecompressionBombWarning (rejected below), above twice it an error.
 Image.MAX_IMAGE_PIXELS = 25_000_000
 MAX_PHOTO_FRAMES = 100
-PHOTO_FORMAT_EXTENSIONS = {"PNG": "png", "JPEG": "jpg", "GIF": "gif", "WEBP": "webp"}
+# Multi-picture JPEGs (MPF, common on phones) open as "MPO": only their
+# primary image is kept, stored as a plain JPEG.
+PHOTO_FORMAT_EXTENSIONS = {"PNG": "png", "JPEG": "jpg", "MPO": "jpg", "GIF": "gif", "WEBP": "webp"}
 # Only rendering-related info survives re-encoding (no EXIF/GPS, ICC, comments...).
 PHOTO_FRAME_INFO_KEYS = ("transparency", "duration")
 # warnings.catch_warnings() swaps process-global state: concurrent uploads
@@ -360,8 +362,10 @@ def _reencode_photo(data):
                 if ext is None or n_frames > MAX_PHOTO_FRAMES or total_pixels > Image.MAX_IMAGE_PIXELS:
                     raise APIError(PHOTO_FORMAT_ERROR, 400)
 
+                out_format = "JPEG" if img.format == "MPO" else img.format
+                sources = [img] if img.format == "MPO" else ImageSequence.Iterator(img)
                 frames = []
-                for frame in ImageSequence.Iterator(img):
+                for frame in sources:
                     frame = ImageOps.exif_transpose(frame)
                     if ext == "jpg" and frame.mode not in ("RGB", "L"):
                         frame = frame.convert("RGB")
@@ -372,14 +376,14 @@ def _reencode_photo(data):
                 if len(frames) > 1:
                     frames[0].save(
                         out,
-                        format=img.format,
+                        format=out_format,
                         save_all=True,
                         append_images=frames[1:],
                         duration=[f.info.get("duration", 100) for f in frames],
                         loop=img.info.get("loop", 0),
                     )
                 else:
-                    frames[0].save(out, format=img.format)
+                    frames[0].save(out, format=out_format)
     except APIError:
         raise
     except Exception:
