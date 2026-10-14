@@ -200,12 +200,21 @@ def request_password_reset():
     if request.method == "GET":
         return render_template("forgot_password.html")
 
-    identifier = str(request.form.get("email", "")).strip().lower()
+    raw_email = str(request.form.get("email", "")).strip()
 
-    if not identifier:
+    if not raw_email:
         return render_template("forgot_password.html", error="Email is required")
 
-    user = query_one("SELECT id FROM users WHERE email = ?", (identifier,))
+    # Normalize exactly like register() so the lookup matches the stored form (#92).
+    # An invalid address gets the same generic response as an unknown one.
+    try:
+        identifier = validate_email(raw_email, check_deliverability=False).normalized
+    except EmailNotValidError:
+        identifier = None
+
+    user = None
+    if identifier is not None:
+        user = query_one("SELECT id, email FROM users WHERE email = ?", (identifier,))
 
     if user:
         token = issue_signed_token(current_app.config["SECRET_KEY"], "password_reset", user["id"])
@@ -220,7 +229,7 @@ def request_password_reset():
         reset_link = url_for("auth.confirm_password_reset", token=token, _external=True)
         try:
             send_email(
-                identifier,
+                user["email"],
                 "Reset your Matcha password",
                 f"""
                 <h1>Password reset</h1>
