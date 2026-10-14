@@ -20,6 +20,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Les outils de `scripts/` (génération de profils `Faker`, bios via `transformers`/`torch`) ont leurs propres dépendances, plus lourdes, non requises par l'app ni par les tests :
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 Créer un fichier `.env` à la racine (jamais commité) avec au minimum :
 
 ```
