@@ -1,5 +1,6 @@
 import importlib
 import sqlite3
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,32 @@ class GenerateUserTests(unittest.TestCase):
 
 class GeneratePhotosTests(unittest.TestCase):
     @patch("scripts.generate_users.execute")
+    @patch("scripts.generate_users.generate_photos", return_value=[])
+    def test_skips_photo_inserts_when_no_photos_are_available(
+        self, mock_generate, mock_execute
+    ):
+        generate_users.create_photos([{"id": 1}], photos_per_user=1)
+
+        mock_generate.assert_called_once_with(1)
+        mock_execute.assert_not_called()
+
+    @patch("scripts.generate_users.generate_photos", return_value=[])
+    @patch("scripts.generate_users.execute")
+    def test_skips_photo_inserts_when_image_directory_has_no_images(
+        self, mock_execute, mock_generate
+    ):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scripts_dir = Path(temp_dir) / "scripts"
+            scripts_dir.mkdir()
+            with (
+                patch.object(generate_users, "__file__", str(scripts_dir / "generate_users.py")),
+                patch.object(generate_users, "PLACEHOLDER_PATH", "/static/images/"),
+            ):
+                generate_users.create_photos([{"id": 1}], photos_per_user=1)
+
+        mock_execute.assert_not_called()
+
+    @patch("scripts.generate_users.execute")
     @patch("scripts.generate_users.generate_photos")
     def test_stores_one_photo_for_each_requested_user(self, mock_generate, mock_execute):
         users = [{"id": user_id} for user_id in range(1, 4)]
@@ -67,16 +94,58 @@ class GeneratePhotosTests(unittest.TestCase):
         stored_urls = [call.args[1][1] for call in mock_execute.call_args_list]
         self.assertEqual(stored_urls, mock_generate.return_value)
 
-    def test_configured_placeholder_image_exists_under_static_folder(self):
-        placeholder_path = (
-            Path(generate_users.__file__).resolve().parent
-            / generate_users.LOCAL_PLACEHOLDER
-        ).resolve()
-
-        self.assertTrue(
-            placeholder_path.is_file(),
-            f"Configured placeholder image does not exist: {placeholder_path}",
+    def test_generate_photos_uses_all_images_in_configured_static_directory(self):
+        static_directory = (
+            Path(generate_users.__file__).resolve().parent.parent
+            / "app"
+            / "static"
+            / "images"
         )
+        image_names = {
+            path.name
+            for path in static_directory.iterdir()
+            if path.is_file()
+            and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+        }
+
+        urls = generate_users.get_placeholder(len(image_names))
+
+        self.assertEqual(len(urls), len(image_names))
+        self.assertEqual(
+            {url.rsplit("/", 1)[-1] for url in urls},
+            image_names,
+        )
+        self.assertTrue(all(url.startswith("/static/images/") for url in urls))
+
+    @patch("scripts.generate_users.requests.get")
+    def test_uses_api_photos_when_api1_returns_images(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {
+            "results": [
+                {"photos": [{"url": "https://example.test/square/bird.jpg"}]},
+                {"photos": [{"url": "https://example.test/square/another.jpg"}]},
+            ]
+        }
+        mock_get.return_value = response
+        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+            urls = generate_users.generate_photos(2)
+
+        self.assertEqual(
+            urls,
+            [
+                "https://example.test/medium/bird.jpg",
+                "https://example.test/medium/another.jpg",
+            ],
+        )
+
+    @patch("scripts.generate_users.get_placeholder", return_value=["/static/images/one.jpg"])
+    @patch("scripts.generate_users.requests.get", side_effect=__import__("requests").ConnectionError())
+    def test_uses_local_images_when_api1_fails(self, mock_get, mock_placeholder):
+        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+            urls = generate_users.generate_photos(1)
+
+        self.assertEqual(urls, ["/static/images/one.jpg"])
+        mock_placeholder.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

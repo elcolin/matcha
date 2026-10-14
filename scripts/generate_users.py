@@ -3,18 +3,16 @@ import sys
 import random
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
+import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from faker import Faker
 from app.config import UserConfig
 from app import create_app
 from app.db import execute
-import requests
-import time
-import os
 
 API_IMAGES1 = os.getenv("API_IMAGES1")
-API_IMAGES2 = os.getenv("API_IMAGES2")
-LOCAL_PLACEHOLDER = os.getenv("LOCAL_PLACEHOLDER")
+PLACEHOLDER_PATH = os.getenv("PLACEHOLDER_PATH", "/static/images/")
 
 """
 Usage:
@@ -211,50 +209,70 @@ def create_profiles(users, ai: bool = False):
         generate_profile(user["id"], user["created_at"], ai=ai)
 
 
+def get_placeholder(count: int):
+    if count <= 0:
+        return []
+
+    url_directory = PLACEHOLDER_PATH.rstrip("/")
+    relative_directory = url_directory.removeprefix("/static/")
+    image_directory = (
+        Path(__file__).resolve().parent.parent / "app" / "static" / relative_directory
+    )
+    if not image_directory.is_dir():
+        return []
+
+    image_files = sorted(
+        path
+        for path in image_directory.iterdir()
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    )
+    if not image_files:
+        return []
+
+    image_urls = [f"{url_directory}/{path.name}" for path in image_files]
+    random.shuffle(image_urls)
+    return (image_urls * (count // len(image_urls) + 1))[:count]
+
+
 def generate_photos(count):
     if count <= 0:
         return []
 
-    urls = []
-    page = 1
-    
-    while len(urls) < count:
+    photos = []
+    if API_IMAGES1:
         try:
-            res = requests.get(
+            response = requests.get(
                 API_IMAGES1,
-                params={"taxon_id": 3, "has[]": "photos", "quality_grade": "research", "per_page": 100, "page": page},
-                headers={"User-Agent": "LocalTestApp/1.0"},
-                timeout=5 
+                params={
+                    "taxon_id": 3,
+                    "has[]": "photos",
+                    "quality_grade": "research",
+                    "per_page": 100,
+                },
+                timeout=5,
             )
-            if res.status_code != 200 or not res.json().get("results"):
-                break
-            for obs in res.json().get("results", []):
-                if photos := obs.get("photos"):
-                    urls.append(photos[0]["url"].replace("square", "medium"))
-        except requests.RequestException:
-            break
-        page += 1
-        if len(urls) < count:
-            time.sleep(1)
+            response.raise_for_status()
+            photos = [
+                photo["url"].replace("square", "medium")
+                for observation in response.json().get("results", [])
+                for photo in observation.get("photos", [])
+                if photo.get("url")
+            ]
+        except (requests.RequestException, ValueError):
+            pass
 
-    if not urls:
-        try:
-            check = requests.head(API_IMAGES2, timeout=2)
-            if check.status_code in (200, 301, 302):
-                urls = [
-                    f"{API_IMAGES2}?lock={random.randint(1, 100000)}"
-                    for _ in range(count)
-                ]
-            else:
-                urls = [LOCAL_PLACEHOLDER]
-        except requests.RequestException:
-            urls = [LOCAL_PLACEHOLDER]
-    return (urls * (count // len(urls) + 1))[:count]
+    if not photos:
+        photos = get_placeholder(count)
+    return (photos * (count // len(photos) + 1))[:count]
+
 
 def create_photos(users, photos_per_user=5):
     """Create photos for each user (accepts list of user dicts)."""
     total_photos = len(users) * photos_per_user
-    urls = iter(generate_photos(total_photos))
+    photo_urls = generate_photos(total_photos)
+    if not photo_urls:
+        return
+    urls = iter(photo_urls)
 
     for user in users:
         user_id = user["id"]
