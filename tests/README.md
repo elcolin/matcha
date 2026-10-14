@@ -11,7 +11,7 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/match/routes.py` — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
 - `app/profile/data.py` — mise à jour email/prénom/nom (`UserUpdater`).
 - `app/profile/geolocation.py` — extraction ville/quartier depuis les coordonnées GPS, validation de ville (géocodeur mocké, aucun appel réseau).
-- `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
+- `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`, `_detect_photo_format` : contrôle par signature binaire, réponse 413 pour les uploads trop lourds), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
 - Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
