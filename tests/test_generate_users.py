@@ -1,10 +1,11 @@
 import importlib
 import sqlite3
+import sys
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 with patch("app.create_app", return_value=MagicMock()):
     generate_users = importlib.import_module("scripts.generate_users")
@@ -48,6 +49,153 @@ class GenerateUserTests(unittest.TestCase):
 
         self.assertEqual(user["id"], 331)
         db.close()
+
+
+class GenerateProfileTests(unittest.TestCase):
+    @patch("scripts.generate_users.execute")
+    def test_saves_generated_ai_bio_to_profile(self, mock_execute):
+        expected_bio = "I love sunny mornings and finding the best branches."
+        ai_module = MagicMock()
+        ai_module.generate_bio.return_value = expected_bio
+
+        with patch.dict(sys.modules, {"generate_bio": ai_module}):
+            generate_users.generate_profile(
+                user_id=42,
+                created_at=datetime(2025, 1, 1),
+                ai=True,
+            )
+
+        ai_module.generate_bio.assert_called_once_with()
+        saved_profile = mock_execute.call_args.args[1]
+        self.assertEqual(saved_profile[0], 42)
+        self.assertEqual(saved_profile[3], expected_bio)
+
+    @patch("scripts.generate_users.execute")
+    def test_uses_random_bio_when_ai_models_return_no_bio(self, mock_execute):
+        fallback_bio = "I enjoy quiet mornings."
+        fake = MagicMock()
+        fake.paragraph.return_value = fallback_bio
+        fake.date_time_between.return_value = datetime(2025, 1, 2)
+        fake.local_latlng.return_value = ("48.8", "2.3", "Paris", "France", "Europe/Paris")
+        fake.street_name.return_value = "Rue de Rivoli"
+        ai_module = MagicMock()
+        ai_module.generate_bio.return_value = None
+
+        with (
+            patch.dict(sys.modules, {"generate_bio": ai_module}),
+            patch.object(generate_users, "fake", fake),
+        ):
+            generate_users.generate_profile(
+                user_id=42,
+                created_at=datetime(2025, 1, 1),
+                ai=True,
+            )
+
+        fake.paragraph.assert_called_once_with(nb_sentences=3)
+        saved_profile = mock_execute.call_args.args[1]
+        self.assertEqual(saved_profile[3], fallback_bio)
+
+
+class GenerateBioTests(unittest.TestCase):
+    def setUp(self):
+        self.bio_generator = importlib.import_module("scripts.generate_bio")
+        self.bio_generator._model = None
+        self.bio_generator._tokenizer = None
+        self.bio_generator._model_index = 0
+
+    def tearDown(self):
+        self.bio_generator._model = None
+        self.bio_generator._tokenizer = None
+        self.bio_generator._model_index = 0
+
+    def test_reuses_loaded_model_across_bio_generations(self):
+        expected_bio = "I love warm sunshine and exploring the garden."
+        tokenizer = MagicMock()
+        model = MagicMock()
+
+        with (
+            patch.object(self.bio_generator, "MODELS", ["model-a"]),
+            patch.object(
+                self.bio_generator.AutoTokenizer,
+                "from_pretrained",
+                return_value=tokenizer,
+            ) as load_tokenizer,
+            patch.object(
+                self.bio_generator.AutoModelForCausalLM,
+                "from_pretrained",
+                return_value=model,
+            ) as load_model,
+            patch.object(
+                self.bio_generator, "generate", return_value=expected_bio
+            ) as mock_generate,
+            patch.object(self.bio_generator, "is_valid", return_value=True),
+        ):
+            first_bio = self.bio_generator.generate_bio()
+            second_bio = self.bio_generator.generate_bio()
+
+        self.assertEqual(first_bio, expected_bio)
+        self.assertEqual(second_bio, expected_bio)
+        load_tokenizer.assert_called_once_with("model-a")
+        load_model.assert_called_once_with("model-a")
+        self.assertEqual(mock_generate.call_count, 2)
+
+    def test_tries_next_model_when_generation_raises(self):
+        expected_bio = "I love warm sunshine and exploring the garden."
+        tokenizer = MagicMock()
+        model = MagicMock()
+
+        with (
+            patch.object(self.bio_generator, "MODELS", ["model-a", "model-b"]),
+            patch.object(
+                self.bio_generator.AutoTokenizer,
+                "from_pretrained",
+                return_value=tokenizer,
+            ) as load_tokenizer,
+            patch.object(
+                self.bio_generator.AutoModelForCausalLM,
+                "from_pretrained",
+                return_value=model,
+            ) as load_model,
+            patch.object(
+                self.bio_generator,
+                "generate",
+                side_effect=[RuntimeError("model-a failed"), expected_bio],
+            ),
+            patch.object(self.bio_generator, "is_valid", return_value=True),
+        ):
+            bio = self.bio_generator.generate_bio()
+
+        self.assertEqual(bio, expected_bio)
+        self.assertEqual(load_tokenizer.call_args_list, [call("model-a"), call("model-b")])
+        self.assertEqual(load_model.call_args_list, [call("model-a"), call("model-b")])
+        self.assertEqual(self.bio_generator._model_index, 1)
+        self.assertIs(self.bio_generator._model, model)
+
+    def test_tries_next_model_when_loading_a_model_raises(self):
+        expected_bio = "I love warm sunshine and exploring the garden."
+        tokenizer = MagicMock()
+        model = MagicMock()
+
+        with (
+            patch.object(self.bio_generator, "MODELS", ["model-a", "model-b"]),
+            patch.object(
+                self.bio_generator.AutoTokenizer,
+                "from_pretrained",
+                side_effect=[RuntimeError("model-a is unavailable"), tokenizer],
+            ) as load_tokenizer,
+            patch.object(
+                self.bio_generator.AutoModelForCausalLM,
+                "from_pretrained",
+                return_value=model,
+            ) as load_model,
+            patch.object(self.bio_generator, "generate", return_value=expected_bio),
+            patch.object(self.bio_generator, "is_valid", return_value=True),
+        ):
+            bio = self.bio_generator.generate_bio()
+
+        self.assertEqual(bio, expected_bio)
+        self.assertEqual(load_tokenizer.call_args_list, [call("model-a"), call("model-b")])
+        load_model.assert_called_once_with("model-b")
 
 
 class GeneratePhotosTests(unittest.TestCase):
@@ -117,9 +265,54 @@ class GeneratePhotosTests(unittest.TestCase):
         )
         self.assertTrue(all(url.startswith("/static/images/") for url in urls))
 
+    def test_local_jpeg_images_have_valid_file_markers(self):
+        static_directory = (
+            Path(generate_users.__file__).resolve().parent.parent
+            / "app"
+            / "static"
+            / "images"
+        )
+        image_files = [
+            path
+            for path in static_directory.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg"}
+        ]
+
+        self.assertTrue(image_files, "No local JPEG images found")
+        for image_file in image_files:
+            with self.subTest(image=image_file.name):
+                content = image_file.read_bytes()
+                self.assertTrue(content.startswith(b"\xff\xd8\xff"), "Missing JPEG header")
+                self.assertTrue(content.endswith(b"\xff\xd9"), "Missing JPEG end marker")
+
+    @patch("scripts.generate_users.execute")
+    @patch(
+        "scripts.generate_users.requests.get",
+        side_effect=__import__("requests").ConnectionError(),
+    )
+    def test_uploads_local_placeholder_when_api1_fails(self, mock_get, mock_execute):
+        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+            generate_users.create_photos([{"id": 12}], photos_per_user=1)
+
+        mock_get.assert_called_once()
+        mock_execute.assert_called_once()
+        inserted_photo = mock_execute.call_args.args[1]
+        self.assertEqual(inserted_photo[0], 12)
+        self.assertTrue(inserted_photo[1].startswith("/static/images/"))
+        self.assertIn(inserted_photo[1].rsplit("/", 1)[-1], {
+            path.name
+            for path in (
+                Path(generate_users.__file__).resolve().parent.parent
+                / "app"
+                / "static"
+                / "images"
+            ).iterdir()
+        })
+
     @patch("scripts.generate_users.requests.get")
     def test_uses_api_photos_when_api1_returns_images(self, mock_get):
         response = MagicMock()
+        response.raise_for_status.return_value = None
         response.json.return_value = {
             "results": [
                 {"photos": [{"url": "https://example.test/square/bird.jpg"}]},
@@ -136,6 +329,17 @@ class GeneratePhotosTests(unittest.TestCase):
                 "https://example.test/medium/bird.jpg",
                 "https://example.test/medium/another.jpg",
             ],
+        )
+        response.raise_for_status.assert_called_once()
+        mock_get.assert_called_once_with(
+            "https://api.test/photos",
+            params={
+                "taxon_id": 3,
+                "has[]": "photos",
+                "quality_grade": "research",
+                "per_page": 100,
+            },
+            timeout=5,
         )
 
     @patch("scripts.generate_users.get_placeholder", return_value=["/static/images/one.jpg"])

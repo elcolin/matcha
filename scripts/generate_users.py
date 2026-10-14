@@ -100,6 +100,8 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
         try:
             from generate_bio import generate_bio
             bio = generate_bio()
+            if not bio:
+                bio = fake.paragraph(nb_sentences=3)
         except Exception:
             bio = fake.paragraph(nb_sentences=3)
     else:
