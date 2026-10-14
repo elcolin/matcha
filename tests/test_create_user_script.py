@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+import email_validator
+
 from app.db import query_one
 from app.security import read_signed_token, validate_password_strength, verify_password
 from scripts.create_user import create_user, generate_password, issue_verification_token, parse_args
@@ -8,6 +12,10 @@ class CreateUserScriptTests(DBTestCase):
     def setUp(self):
         super().setUp()
         self.app.config["EMAIL_VERIFY_TOKEN_TTL_SECONDS"] = 3600
+        # Skip the DNS deliverability lookup: tests never rely on network access.
+        no_dns = patch.object(email_validator, "TEST_ENVIRONMENT", True)
+        no_dns.start()
+        self.addCleanup(no_dns.stop)
 
     def test_generated_password_passes_the_app_policy(self):
         self.assertTrue(validate_password_strength(generate_password())[0])
@@ -27,10 +35,18 @@ class CreateUserScriptTests(DBTestCase):
         self.assertEqual(row["email_verified"], 0)
 
     def test_uses_the_given_credentials(self):
-        user = create_user(username="alice", email="alice@test.dev", password="Xq7#vRt9!mKz2p")
-        self.assertEqual((user["username"], user["email"]), ("alice", "alice@test.dev"))
+        user = create_user(username="alice", email="alice@gmail.com", password="Xq7#vRt9!mKz2p")
+        self.assertEqual((user["username"], user["email"]), ("alice", "alice@gmail.com"))
         row = query_one("SELECT password_hash FROM users WHERE username = 'alice'")
         self.assertTrue(verify_password(row["password_hash"], "Xq7#vRt9!mKz2p"))
+
+    def test_default_email_uses_a_deliverable_domain(self):
+        user = create_user()
+        self.assertEqual(user["email"], f"{user['username']}@gmail.com")
+
+    def test_rejects_an_invalid_email(self):
+        with self.assertRaises(ValueError):
+            create_user(email="not-an-email")
 
     def test_rejects_a_weak_password(self):
         with self.assertRaises(ValueError):
@@ -39,7 +55,7 @@ class CreateUserScriptTests(DBTestCase):
     def test_rejects_a_duplicate_username(self):
         create_user(username="alice")
         with self.assertRaises(ValueError):
-            create_user(username="alice", email="other@test.dev")
+            create_user(username="alice", email="other@gmail.com")
 
     def test_verification_token_is_valid_for_the_user(self):
         user = create_user(verified=False)

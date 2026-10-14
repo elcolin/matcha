@@ -5,6 +5,7 @@ import string
 import sys
 from datetime import datetime, timedelta, timezone
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from email_validator import EmailNotValidError, validate_email
 from flask import current_app
 from app.db import execute, query_one
 from app.security import hash_password, issue_signed_token, validate_password_strength
@@ -19,6 +20,7 @@ Usage:
     python scripts/create_user.py --unverified --base-url http://127.0.0.1:8000   # host used in the verify link
 """
 
+DEFAULT_EMAIL_DOMAIN = "gmail.com"
 PASSWORD_ALPHABET = string.ascii_letters + string.digits + "!#$%&*+-=?@^_"
 
 
@@ -34,7 +36,12 @@ def create_user(username=None, email=None, password=None,
                 first_name="Test", last_name="User", verified=True):
     suffix = secrets.token_hex(3)
     username = username or f"test_{suffix}"
-    email = email or f"{username}@example.com"
+    email = email or f"{username}@{DEFAULT_EMAIL_DOMAIN}"
+    try:
+        # Same check as profile email updates (app/profile/data.py), stricter than registration.
+        email = validate_email(email).normalized
+    except EmailNotValidError as exc:
+        raise ValueError(f"Email rejected: {exc}")
     if password is None:
         password = generate_password()
     else:
