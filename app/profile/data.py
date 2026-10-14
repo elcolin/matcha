@@ -7,13 +7,24 @@ from app.utils import (
     APIError)
 
 class UserUpdater():
+    def is_current_email(user_id, email):
+        """True if `email` (stripped, case-insensitive) is the user's active email."""
+        current = query_one("SELECT email FROM users WHERE id = ?", (user_id,))
+        return bool(
+            current
+            and current["email"].casefold() == (email or "").strip().casefold()
+        )
+
     def request_email_change(user_id, new_email, secret_key, ttl_seconds):
         """Start an email change: the active email is left untouched until the
         confirmation link sent to `new_email` is clicked (see
         app.auth.routes.confirm_email_change). Returns the issued token, or
         None if this call was a no-op.
         """
-        if new_email is None or new_email == "":
+        new_email = (new_email or "").strip()
+        # Checked before validate_email: an unchanged address must never
+        # trigger the (DNS-backed) validation nor touch a pending request.
+        if not new_email or UserUpdater.is_current_email(user_id, new_email):
             return None
 
         try:
@@ -21,10 +32,6 @@ class UserUpdater():
             new_email = valid.normalized  # cleaned-up version
         except EmailNotValidError as e:
             raise APIError(str(e))
-
-        current = query_one("SELECT email FROM users WHERE id = ?", (user_id,))
-        if current and current["email"] == new_email:
-            return None
 
         taken = query_one(
             "SELECT 1 FROM users WHERE email = ? AND id != ?", (new_email, user_id)

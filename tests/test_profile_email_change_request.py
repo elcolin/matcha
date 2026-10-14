@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from email_validator import validate_email as real_validate_email
+
 from app.config import Config
 
 
@@ -16,6 +18,16 @@ def _fake_validate_email(email):
     return result
 
 
+def _offline_validate_email(email):
+    """The real email_validator without the DNS deliverability check: keeps
+    its actual normalization (domain-only lowercasing, no stripping) so tests
+    exercise the same edge cases as production, while staying offline."""
+    return real_validate_email(email, check_deliverability=False)
+
+
+CONFIRMATION_MESSAGE = "If this address is valid, a confirmation email has been sent."
+
+
 class ProfileEmailChangeRequestTests(unittest.TestCase):
     """Covers the HTTP-level part of the deferred email change flow: submitting
     a new email from /profile/edit must never touch users.email immediately,
@@ -25,6 +37,11 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
     """
 
     def setUp(self):
+        # /profile/edit validates the city through Nominatim: keep tests offline.
+        city_check = patch("app.profile.routes.check_if_city_valid")
+        city_check.start()
+        self.addCleanup(city_check.stop)
+
         self.db_fd, self.db_path = tempfile.mkstemp(suffix=".db")
         self._original_db_path = Config.DATABASE_PATH
         Config.DATABASE_PATH = self.db_path
@@ -211,6 +228,94 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
             row = query_one("SELECT email FROM users WHERE username = 'alice'")
 
         self.assertEqual(row["email"], "old@example.com")
+
+
+    def _flashes(self):
+        with self.client.session_transaction() as session:
+            return list(session.get("_flashes", []))
+
+    def _alice(self):
+        from app.db import query_one
+
+        with self.app.app_context():
+            user = query_one(
+                "SELECT id, email, first_name, email_verified FROM users WHERE username = 'alice'"
+            )
+            pending = query_one(
+                "SELECT 1 FROM email_changes WHERE user_id = ?", (user["id"],)
+            )
+        return user, pending
+
+    @patch("app.profile.data.validate_email", side_effect=_offline_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_unchanged_email_with_other_field_change_sends_nothing(self, mock_send_email, mock_validate):
+        token = self._login_and_get_token()
+
+        response = self.client.post(
+            "/profile/edit",
+            data={
+                "first_name": "Alicia",
+                "last_name": "Doe",
+                "email": "old@example.com",
+                "csrf_token": token,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_send_email.assert_not_called()
+        user, pending = self._alice()
+        self.assertEqual(user["first_name"], "Alicia")
+        self.assertEqual(user["email"], "old@example.com")
+        self.assertEqual(user["email_verified"], 1)
+        self.assertIsNone(pending)
+
+    @patch("app.profile.data.validate_email", side_effect=_offline_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_unchanged_email_with_different_case_and_spaces_sends_nothing(self, mock_send_email, mock_validate):
+        token = self._login_and_get_token()
+
+        response = self._submit_email_change("  Old@EXAMPLE.com ", token)
+
+        self.assertEqual(response.status_code, 302)
+        mock_send_email.assert_not_called()
+        _, pending = self._alice()
+        self.assertIsNone(pending)
+        self.assertNotIn("error", [category for category, _ in self._flashes()])
+
+    @patch("app.profile.data.validate_email", side_effect=_offline_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_unchanged_email_flashes_profile_updated_only(self, mock_send_email, mock_validate):
+        token = self._login_and_get_token()
+
+        self._submit_email_change("old@example.com", token)
+
+        self.assertEqual(self._flashes(), [("success", "Profile updated.")])
+
+    @patch("app.profile.data.validate_email", side_effect=_offline_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_new_email_with_real_validator_still_sends_confirmation(self, mock_send_email, mock_validate):
+        token = self._login_and_get_token()
+
+        response = self._submit_email_change(" new@example.com ", token)
+
+        self.assertEqual(response.status_code, 302)
+        mock_send_email.assert_called_once()
+        self.assertEqual(mock_send_email.call_args[0][0], "new@example.com")
+        self.assertIn(CONFIRMATION_MESSAGE, [message for _, message in self._flashes()])
+
+    @patch("app.profile.data.validate_email", side_effect=_offline_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_whitespace_only_email_is_a_no_op(self, mock_send_email, mock_validate):
+        token = self._login_and_get_token()
+
+        response = self._submit_email_change("   ", token)
+
+        self.assertEqual(response.status_code, 302)
+        mock_send_email.assert_not_called()
+        user, pending = self._alice()
+        self.assertEqual(user["email"], "old@example.com")
+        self.assertIsNone(pending)
+        self.assertEqual(self._flashes(), [("success", "Profile updated.")])
 
 
 if __name__ == "__main__":

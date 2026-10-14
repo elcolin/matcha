@@ -250,17 +250,18 @@ def _update_profile(user_id: int, data):
 def _request_email_change_and_notify(user_id: int, new_email):
     """Start a deferred email change and email the confirmation link to the
     NEW address; the active email is only updated once that link is clicked
-    (see app.auth.routes.confirm_email_change). No-op if `new_email` is
-    empty.
+    (see app.auth.routes.confirm_email_change). Silent no-op (no email, no
+    confirmation flash) if `new_email` is empty or unchanged.
 
-    Always flashes the same generic message regardless of whether the
-    change actually resulted in a token being issued (matches current
-    active email, or already used by another account): the observable
+    Otherwise always flashes the same generic message regardless of whether
+    the change actually resulted in a token being issued (e.g. already used
+    by another account): the observable
     response must never reveal whether an email address is already
     registered (enumeration - see fix/password-reset-enumeration for the
     same pattern applied to the password reset flow).
     """
-    if not new_email:
+    new_email = (new_email or "").strip()
+    if not new_email or UserUpdater.is_current_email(user_id, new_email):
         return
 
     token = UserUpdater.request_email_change(
@@ -305,7 +306,7 @@ def edit_profile_submit():
         form_data = request.form.to_dict(flat=True)
         form_data.setdefault("location_consent_gps", "0")
         _update_profile(user_id, form_data)
-        _request_email_change_and_notify(user_id, form_data.get("email") or None)
+        _request_email_change_and_notify(user_id, form_data.get("email"))
     except APIError as err:
         flash(err.message, "error")
         return redirect(url_for("profile.edit_profile"))
