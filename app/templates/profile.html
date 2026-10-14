@@ -19,6 +19,7 @@
                             {{ 'Online' if profile.online else 'Offline' }}
                         </p>
                         <p class="text-muted">{{ profile.city }}</p>
+                        <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
                         <!-- BIO -->
                         <p>{{ profile.bio }}</p>
                         <!-- TAGS -->
