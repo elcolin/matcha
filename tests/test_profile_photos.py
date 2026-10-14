@@ -3,9 +3,12 @@ import os
 import secrets
 import tempfile
 import unittest
+import warnings
 from io import BytesIO
 from pathlib import Path
+from unittest import mock
 
+from PIL import Image
 from werkzeug.datastructures import FileStorage
 
 from app.config import Config
@@ -14,11 +17,38 @@ from app.security import generate_csrf_token
 from app.utils import APIError
 from tests.helpers import DBTestCase
 
-# Minimal byte sequences carrying each allowed format's magic signature.
-PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
-JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 20
-GIF_BYTES = b"GIF89a" + b"\x01\x00\x01\x00" + b"\x00" * 20
-WEBP_BYTES = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 20
+def _image_bytes(fmt, mode="RGB", size=(4, 4), color=0, **save_kwargs):
+    buf = BytesIO()
+    Image.new(mode, size, color).save(buf, format=fmt, **save_kwargs)
+    return buf.getvalue()
+
+
+def _animated_bytes(fmt, frame_count, size=(4, 4)):
+    frames = [Image.new("RGB", size, ((i * 100) % 256, i % 256, 0)) for i in range(frame_count)]
+    buf = BytesIO()
+    frames[0].save(
+        buf, format=fmt, save_all=True, append_images=frames[1:], duration=50, loop=0, lossless=True
+    )
+    return buf.getvalue()
+
+
+def _noisy_bytes(fmt, size=(64, 64)):
+    buf = BytesIO()
+    Image.frombytes("RGB", size, os.urandom(size[0] * size[1] * 3)).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+# Real, fully decodable tiny images for each allowed format.
+PNG_BYTES = _image_bytes("PNG")
+JPEG_BYTES = _image_bytes("JPEG")
+GIF_BYTES = _image_bytes("GIF", mode="P")
+WEBP_BYTES = _image_bytes("WEBP")
+
+# Byte sequences carrying a valid magic signature but no decodable image.
+FAKE_PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
+FAKE_JPEG_HEADER = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 20
+FAKE_GIF_HEADER = b"GIF89a" + b"\x01\x00\x01\x00" + b"\x00" * 20
+FAKE_WEBP_HEADER = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 20
 
 
 def _photo(content, filename):
@@ -35,7 +65,7 @@ class SaveUploadedPhotoTests(DBTestCase):
             ("jpg", JPEG_BYTES, "jpg"),
             ("jpeg", JPEG_BYTES, "jpg"),
             ("gif", GIF_BYTES, "gif"),
-            ("gif", b"GIF87a" + b"\x00" * 20, "gif"),
+            ("gif", _image_bytes("GIF", mode="L"), "gif"),
             ("webp", WEBP_BYTES, "webp"),
         ]
         for ext, content, stored_ext in cases:
@@ -46,11 +76,25 @@ class SaveUploadedPhotoTests(DBTestCase):
                 self.assertTrue(url.endswith(f".{stored_ext}"))
                 self.assertTrue(self._saved_path(url).exists())
 
-    def test_saved_file_contains_the_full_uploaded_bytes(self):
-        # The signature sniffing must rewind the stream before saving.
-        url = _save_uploaded_photo(_photo(PNG_BYTES, "photo.png"))
+    def test_stored_file_decodes_with_the_same_size_and_format(self):
+        cases = [("png", PNG_BYTES, "PNG"), ("jpg", JPEG_BYTES, "JPEG"), ("gif", GIF_BYTES, "GIF"), ("webp", WEBP_BYTES, "WEBP")]
+        for ext, content, fmt in cases:
+            with self.subTest(fmt=fmt):
+                url = _save_uploaded_photo(_photo(content, f"photo.{ext}"))
 
-        self.assertEqual(self._saved_path(url).read_bytes(), PNG_BYTES)
+                with Image.open(self._saved_path(url)) as stored:
+                    stored.load()
+                    self.assertEqual(stored.format, fmt)
+                    self.assertEqual(stored.size, (4, 4))
+
+    def test_valid_uploads_do_not_emit_warnings(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            for ext, content in [("png", PNG_BYTES), ("jpg", JPEG_BYTES), ("gif", GIF_BYTES), ("webp", WEBP_BYTES)]:
+                _save_uploaded_photo(_photo(content, f"photo.{ext}"))
+            _save_uploaded_photo(_photo(_animated_bytes("GIF", 3), "anim.gif"))
+
+        self.assertEqual([str(w.message) for w in caught], [])
 
     def test_generates_a_unique_filename_for_repeated_uploads(self):
         first = _save_uploaded_photo(_photo(PNG_BYTES, "photo.png"))
@@ -100,6 +144,14 @@ class SaveUploadedPhotoTests(DBTestCase):
             "truncated webp": (b"RIFF\x00\x00\x00\x00WE", "photo.webp"),
             "riff but not webp": (b"RIFF\x00\x00\x00\x00AVI LIST" + b"\x00" * 10, "photo.webp"),
             "truncated png": (b"\x89PNG", "photo.png"),
+            "header-only png": (FAKE_PNG_HEADER, "photo.png"),
+            "header-only jpeg": (FAKE_JPEG_HEADER, "photo.jpg"),
+            "header-only gif": (FAKE_GIF_HEADER, "photo.gif"),
+            "header-only webp": (FAKE_WEBP_HEADER, "photo.webp"),
+            "truncated real jpeg": (_noisy_bytes("JPEG")[:-400], "photo.jpg"),
+            "truncated real png": (_noisy_bytes("PNG")[:-400], "photo.png"),
+            "valid png header followed by garbage": (PNG_BYTES[:33] + b"\x00garbage" * 10, "photo.png"),
+            "too many animation frames": (_animated_bytes("GIF", 101), "photo.gif"),
         }
         for label, (content, filename) in cases.items():
             with self.subTest(label):
@@ -119,6 +171,118 @@ class SaveUploadedPhotoTests(DBTestCase):
         saved_path = self._saved_path(url)
         self.assertTrue(saved_path.resolve().is_relative_to(Path(self.app.config["UPLOAD_FOLDER"]).resolve()))
         self.assertTrue(saved_path.exists())
+
+
+    def _assert_rejected(self, content, filename):
+        with self.assertRaises(APIError) as ctx:
+            _save_uploaded_photo(_photo(content, filename))
+        self.assertEqual(ctx.exception.status, 400)
+        upload_folder = Path(self.app.config["UPLOAD_FOLDER"])
+        self.assertEqual(list(upload_folder.glob("*")) if upload_folder.exists() else [], [])
+
+    def test_trailing_payload_after_a_valid_image_is_dropped_by_reencoding(self):
+        marker = b"<script>alert(1)</script>"
+
+        url = _save_uploaded_photo(_photo(PNG_BYTES + marker, "photo.png"))
+
+        self.assertNotIn(marker, self._saved_path(url).read_bytes())
+
+    def test_decompression_bomb_in_warning_range_is_rejected_without_leaking_a_warning(self):
+        content = _image_bytes("PNG", size=(12, 12))  # 144 pixels > 100
+
+        with mock.patch.object(Image, "MAX_IMAGE_PIXELS", 100):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                self._assert_rejected(content, "photo.png")
+
+        self.assertEqual([str(w.message) for w in caught], [])
+
+    def test_decompression_bomb_in_error_range_is_rejected(self):
+        content = _image_bytes("PNG", size=(20, 20))  # 400 pixels > 2 * 100
+
+        with mock.patch.object(Image, "MAX_IMAGE_PIXELS", 100):
+            self._assert_rejected(content, "photo.png")
+
+    def test_animation_whose_total_pixels_exceed_the_limit_is_rejected(self):
+        content = _animated_bytes("GIF", 10)  # 10 frames of 16 pixels each
+
+        with mock.patch.object(Image, "MAX_IMAGE_PIXELS", 100):
+            self._assert_rejected(content, "photo.gif")
+
+    def test_exif_metadata_including_gps_is_stripped_and_orientation_applied(self):
+        exif = Image.Exif()
+        exif[0x010F] = "SecretCamMaker"
+        exif[0x0112] = 6  # rotate 90 degrees clockwise on display
+        exif.get_ifd(0x8825)[1] = "N"
+        exif.get_ifd(0x8825)[2] = (48.0, 51.0, 24.0)
+        content = _image_bytes("JPEG", size=(8, 4), exif=exif)
+        with Image.open(BytesIO(content)) as original:
+            self.assertTrue(original.getexif().get_ifd(0x8825))
+
+        url = _save_uploaded_photo(_photo(content, "photo.jpg"))
+
+        stored_bytes = self._saved_path(url).read_bytes()
+        self.assertNotIn(b"SecretCamMaker", stored_bytes)
+        with Image.open(BytesIO(stored_bytes)) as stored:
+            self.assertNotIn("exif", stored.info)
+            self.assertEqual(dict(stored.getexif()), {})
+            self.assertEqual(stored.size, (4, 8))
+
+    def test_png_content_named_jpg_is_stored_as_png(self):
+        url = _save_uploaded_photo(_photo(PNG_BYTES, "photo.jpg"))
+
+        self.assertTrue(url.endswith(".png"))
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.format, "PNG")
+
+    def test_rgba_png_keeps_its_alpha_channel(self):
+        content = _image_bytes("PNG", mode="RGBA", color=(255, 0, 0, 128))
+
+        url = _save_uploaded_photo(_photo(content, "photo.png"))
+
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.format, "PNG")
+            self.assertEqual(stored.mode, "RGBA")
+            self.assertEqual(stored.getpixel((0, 0))[3], 128)
+
+    def test_cmyk_jpeg_is_reencoded_without_error(self):
+        content = _image_bytes("JPEG", mode="CMYK", color=(0, 255, 255, 0))
+
+        url = _save_uploaded_photo(_photo(content, "photo.jpg"))
+
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.format, "JPEG")
+            self.assertEqual(stored.mode, "RGB")
+
+    def test_animated_gif_and_webp_keep_all_their_frames(self):
+        for fmt, ext in [("GIF", "gif"), ("WEBP", "webp")]:
+            with self.subTest(fmt=fmt):
+                content = _animated_bytes(fmt, 3)
+                with Image.open(BytesIO(content)) as original:
+                    self.assertEqual(original.n_frames, 3)
+
+                url = _save_uploaded_photo(_photo(content, f"anim.{ext}"))
+
+                with Image.open(self._saved_path(url)) as stored:
+                    self.assertEqual(stored.format, fmt)
+                    self.assertEqual(stored.n_frames, 3)
+
+    def test_animation_at_the_frame_cap_is_accepted(self):
+        content = _animated_bytes("GIF", 100)
+        with Image.open(BytesIO(content)) as original:
+            self.assertEqual(original.n_frames, 100)
+
+        url = _save_uploaded_photo(_photo(content, "anim.gif"))
+
+        with Image.open(self._saved_path(url)) as stored:
+            self.assertEqual(stored.n_frames, 100)
+
+    def test_animation_above_the_frame_cap_is_rejected(self):
+        content = _animated_bytes("GIF", 101)
+        with Image.open(BytesIO(content)) as original:
+            self.assertEqual(original.n_frames, 101)
+
+        self._assert_rejected(content, "anim.gif")
 
 
 class ProfilePhotosRouteTests(unittest.TestCase):
