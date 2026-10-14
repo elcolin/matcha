@@ -87,8 +87,17 @@ def _profile_payload(user_id: int, include_email: bool = False):
         (user_id,),
     )
 
-    online = _compute_online(row["online_until"])
+    return _build_profile_payload(
+        row, [r["name"] for r in tags], [dict(r) for r in photos], include_email=include_email
+    )
 
+
+def _build_profile_payload(row, tags, photos, include_email: bool = False):
+    """Shape a users+profiles row into the profile dict (no DB access).
+
+    `tags` is a list of tag names (sorted by name), `photos` a list of
+    {id, url, is_profile_photo} dicts (profile photo first, then by id).
+    """
     payload = {
         "id": row["id"],
         "username": row["username"],
@@ -104,10 +113,10 @@ def _profile_payload(user_id: int, include_email: bool = False):
         "location_consent_gps": bool(row["location_consent_gps"]),
         "popularity_score": row["popularity_score"],
         "age": row["age"],
-        "online": online,
+        "online": _compute_online(row["online_until"]),
         "last_seen_at": row["last_seen_at"],
-        "tags": [r["name"] for r in tags],
-        "photos": [dict(r) for r in photos],
+        "tags": tags,
+        "photos": photos,
     }
 
     if include_email:
