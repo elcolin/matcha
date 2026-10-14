@@ -100,7 +100,7 @@ class PasswordResetRequestTests(unittest.TestCase):
         self.assertIsNotNone(known_alert)
         self.assertEqual(known_alert, unknown_alert)
 
-    def _seed_mixed_case_user(self):
+    def _seed_lowercase_user(self):
         from app.db import execute
         from app.security import hash_password
 
@@ -108,39 +108,28 @@ class PasswordResetRequestTests(unittest.TestCase):
             execute(
                 "INSERT INTO users (email, username, last_name, first_name, password_hash, email_verified) "
                 "VALUES (?, ?, ?, ?, ?, 1)",
-                ("John@example.com", "johnuser", "Doe", "John", hash_password("StrongPass123!")),
+                ("john@example.com", "johnuser", "Doe", "John", hash_password("StrongPass123!")),
             )
 
     @patch("app.auth.routes.send_email")
-    @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
-    def test_mixed_case_stored_email_is_found_with_mixed_case_domain(self, mock_issue_token, mock_send_email):
-        """#92: the domain is normalized like register() does; the reset goes to the stored address."""
-        self._seed_mixed_case_user()
+    @patch("app.auth.routes.issue_signed_token", side_effect=["fake-token-1", "fake-token-2"])
+    def test_mixed_case_input_finds_the_lowercase_stored_email(self, mock_issue_token, mock_send_email):
+        """#92: stored emails are always lowercase, so the submitted one is lowercased before the lookup."""
+        self._seed_lowercase_user()
 
-        response = self.client.post(
-            "/password-reset/request",
-            data={"email": "John@Example.com", "csrf_token": self._get_csrf_token()},
-        )
+        for submitted in ("John@Example.com", " JOHN@EXAMPLE.COM "):
+            with self.subTest(email=submitted):
+                mock_send_email.reset_mock()
+                response = self.client.post(
+                    "/password-reset/request",
+                    data={"email": submitted, "csrf_token": self._get_csrf_token()},
+                )
 
-        self.assertEqual(response.status_code, 200)
-        mock_issue_token.assert_called_once()
-        mock_send_email.assert_called_once()
-        self.assertEqual(mock_send_email.call_args[0][0], "John@example.com")
+                self.assertEqual(response.status_code, 200)
+                mock_send_email.assert_called_once()
+                self.assertEqual(mock_send_email.call_args[0][0], "john@example.com")
 
-    @patch("app.auth.routes.send_email")
-    @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
-    def test_mixed_case_stored_email_is_found_with_surrounding_spaces(self, mock_issue_token, mock_send_email):
-        self._seed_mixed_case_user()
-
-        response = self.client.post(
-            "/password-reset/request",
-            data={"email": " John@EXAMPLE.com ", "csrf_token": self._get_csrf_token()},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        mock_issue_token.assert_called_once()
-        mock_send_email.assert_called_once()
-        self.assertEqual(mock_send_email.call_args[0][0], "John@example.com")
+        self.assertEqual(mock_issue_token.call_count, 2)
 
     @patch("app.auth.routes.send_email")
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
@@ -175,7 +164,7 @@ class PasswordResetRequestTests(unittest.TestCase):
         mock_send_email.assert_not_called()
 
     @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
-    def test_registered_mixed_case_email_can_request_reset(self, mock_issue_token):
+    def test_registered_email_can_request_reset_with_any_case(self, mock_issue_token):
         """End to end: an address stored by register() must be reachable by the reset request."""
         with patch("app.auth.routes.send_email"):
             register_page = self.client.get("/register").get_data(as_text=True)
@@ -183,7 +172,7 @@ class PasswordResetRequestTests(unittest.TestCase):
             response = self.client.post(
                 "/register",
                 data={
-                    "email": "John@Example.com",
+                    "email": "john@example.com",
                     "username": "johnreg",
                     "last_name": "Doe",
                     "first_name": "John",
@@ -202,7 +191,7 @@ class PasswordResetRequestTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_send_email.assert_called_once()
-        self.assertEqual(mock_send_email.call_args[0][0], "John@example.com")
+        self.assertEqual(mock_send_email.call_args[0][0], "john@example.com")
 
     @staticmethod
     def _extract_alert(html):

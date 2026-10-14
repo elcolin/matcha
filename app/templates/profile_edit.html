@@ -62,7 +62,8 @@
                         <div class="mb-3">
                             <label class="form-label" for="email">Email</label>
                             <input class="form-control" type="text" id="email" name="email"
-                                   value="{{ profile.email or '' }}" placeholder="you@example.com">
+                                   value="{{ profile.email or '' }}" placeholder="you@example.com"
+                                   pattern="[^A-Z]*" title="Email address must be lowercase">
                             {% if pending_email_change %}
                             <div class="form-text">
                                 A change to {{ pending_email_change.new_email }} is awaiting

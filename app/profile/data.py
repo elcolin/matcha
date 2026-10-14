@@ -16,6 +16,9 @@ class UserUpdater():
         if new_email is None or new_email == "":
             return None
 
+        if new_email != new_email.lower():
+            raise APIError("Email address must be lowercase")
+
         try:
             valid = validate_email(new_email, check_deliverability=False)
             new_email = valid.normalized  # cleaned-up version

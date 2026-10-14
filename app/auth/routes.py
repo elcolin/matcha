@@ -87,6 +87,9 @@ def register():
     if missing:
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
+    if data["email"] != data["email"].lower():
+        return render_template("register.html", error="Email address must be lowercase")
+
     try:
         email = validate_email(data["email"].strip(), check_deliverability=False).normalized
     except EmailNotValidError:
@@ -200,12 +203,12 @@ def request_password_reset():
     if request.method == "GET":
         return render_template("forgot_password.html")
 
-    raw_email = str(request.form.get("email", "")).strip()
+    # Stored emails never contain uppercase (see register()), so any case typed here matches (#92).
+    raw_email = str(request.form.get("email", "")).strip().lower()
 
     if not raw_email:
         return render_template("forgot_password.html", error="Email is required")
 
-    # Normalize exactly like register() so the lookup matches the stored form (#92).
     # An invalid address gets the same generic response as an unknown one.
     try:
         identifier = validate_email(raw_email, check_deliverability=False).normalized

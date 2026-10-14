@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
     username TEXT NOT NULL UNIQUE,
     last_name TEXT NOT NULL,
     first_name TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS password_resets (
 CREATE TABLE IF NOT EXISTS email_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    new_email TEXT NOT NULL,
+    new_email TEXT NOT NULL CHECK (new_email = lower(new_email)),
     token TEXT NOT NULL UNIQUE,
     expires_at TEXT NOT NULL,
     used_at TEXT,
