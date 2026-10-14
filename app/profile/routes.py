@@ -47,14 +47,16 @@ def _compute_online(online_until: str | None) -> bool:
     return datetime.fromisoformat(online_until) > datetime.now(timezone.utc)
 
 
-def _profile_payload(user_id: int, include_email: bool = False):
+def _profile_payload(user_id: int, include_email: bool = False, include_coordinates: bool = False):
     """Build the profile dict shared by the profile/edit/match/chat views.
 
-    `email` is deliberately left out unless `include_email=True` is passed
-    explicitly by an owner-only call site (e.g. GET /profile/edit): this
-    payload is also used for third-party profiles (candidate suggestions,
-    profile detail of another user), which must never expose someone else's
-    email address.
+    `email` and the exact `latitude`/`longitude` are deliberately left out
+    unless `include_email=True` / `include_coordinates=True` is passed
+    explicitly by an owner-only or internal call site (e.g. GET /profile/edit,
+    distance computation in candidate_profiles): this payload is also used for
+    third-party profiles (candidate suggestions, profile detail of another
+    user), which must never expose someone else's email address or precise
+    location.
     """
     row = query_one(
         """
@@ -99,8 +101,6 @@ def _profile_payload(user_id: int, include_email: bool = False):
         "bio": row["bio"] or "",
         "city": row["city"],
         "neighborhood": row["neighborhood"],
-        "latitude": row["latitude"],
-        "longitude": row["longitude"],
         "location_consent_gps": bool(row["location_consent_gps"]),
         "popularity_score": row["popularity_score"],
         "age": row["age"],
@@ -112,6 +112,10 @@ def _profile_payload(user_id: int, include_email: bool = False):
 
     if include_email:
         payload["email"] = row["email"]
+
+    if include_coordinates:
+        payload["latitude"] = row["latitude"]
+        payload["longitude"] = row["longitude"]
 
     return payload
 
@@ -148,7 +152,7 @@ def _pending_email_change(user_id: int):
 @profile_bp.route("/profile/edit", methods=["GET"])
 @login_required
 def edit_profile():
-    profile = _profile_payload(g.current_user["id"], include_email=True)
+    profile = _profile_payload(g.current_user["id"], include_email=True, include_coordinates=True)
     pending_email_change = _pending_email_change(g.current_user["id"])
     return render_template(
         "profile_edit.html", profile=profile, pending_email_change=pending_email_change
@@ -418,18 +422,17 @@ def profile_photos_delete_form():
 
 
 @profile_bp.route("/profile/<int:id>", methods=["GET"])
+@login_required
 def detail(id):
     profile = _profile_payload(id)
 
     if profile is None:
         return "Profile not found", 404
 
-    viewer = g.get("current_user")
-    can_interact = bool(viewer)
-    profile["can_interact"] = can_interact
-    is_self = bool(viewer and viewer["id"] == id)
+    viewer = g.current_user
+    is_self = viewer["id"] == id
     profile["is_self"] = is_self
-    if can_interact and not is_self:
+    if not is_self:
 
         if not is_blocked_between(viewer["id"], id):
             recent_view = query_one(
