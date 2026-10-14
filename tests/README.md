@@ -16,6 +16,7 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
 - Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
+- `test_email_html_escape.py` — échappement HTML du prénom dans l'email de vérification (régression XSS sur `app/auth/routes.py::send_verification_email`).
 
 `tests/helpers.py` fournit `DBTestCase`, une base commune qui pousse un contexte Flask adossé à une base SQLite temporaire (chargée depuis le vrai `app/schema.sql`), sans jamais toucher `instance/matcha.db`.
 
