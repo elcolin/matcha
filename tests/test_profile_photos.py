@@ -2,6 +2,7 @@ import json
 import os
 import secrets
 import tempfile
+import threading
 import unittest
 import warnings
 from io import BytesIO
@@ -12,7 +13,7 @@ from PIL import Image
 from werkzeug.datastructures import FileStorage
 
 from app.config import Config
-from app.profile.routes import _save_uploaded_photo
+from app.profile.routes import _reencode_photo, _save_uploaded_photo
 from app.security import generate_csrf_token
 from app.utils import APIError
 from tests.helpers import DBTestCase
@@ -283,6 +284,31 @@ class SaveUploadedPhotoTests(DBTestCase):
             self.assertEqual(original.n_frames, 101)
 
         self._assert_rejected(content, "anim.gif")
+
+
+class ReencodePhotoConcurrencyTests(unittest.TestCase):
+    def test_concurrent_decoding_leaves_the_global_warnings_state_untouched(self):
+        filters_before = list(warnings.filters)
+        showwarnmsg_before = warnings._showwarnmsg_impl
+        results, errors = [], []
+
+        def worker():
+            for _ in range(20):
+                try:
+                    results.append(_reencode_photo(_animated_bytes("GIF", 3)))
+                except Exception as exc:  # collected and asserted below
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 160)
+        self.assertEqual(warnings.filters, filters_before)
+        self.assertIs(warnings._showwarnmsg_impl, showwarnmsg_before)
 
 
 class ProfilePhotosRouteTests(unittest.TestCase):

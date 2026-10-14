@@ -1,6 +1,7 @@
 import io
 import secrets
 import os
+import threading
 import warnings
 from datetime import datetime, timezone
 
@@ -334,6 +335,9 @@ MAX_PHOTO_FRAMES = 100
 PHOTO_FORMAT_EXTENSIONS = {"PNG": "png", "JPEG": "jpg", "GIF": "gif", "WEBP": "webp"}
 # Only rendering-related info survives re-encoding (no EXIF/GPS, ICC, comments...).
 PHOTO_FRAME_INFO_KEYS = ("transparency", "duration")
+# warnings.catch_warnings() swaps process-global state: concurrent uploads
+# (threaded server) must not interleave it.
+_WARNINGS_CAPTURE_LOCK = threading.Lock()
 
 
 def _reencode_photo(data):
@@ -343,7 +347,7 @@ def _reencode_photo(data):
     complete, reasonably sized PNG/JPEG/GIF/WebP image.
     """
     try:
-        with warnings.catch_warnings(record=True) as caught:
+        with _WARNINGS_CAPTURE_LOCK, warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             with Image.open(io.BytesIO(data)) as probe:
                 probe.verify()
