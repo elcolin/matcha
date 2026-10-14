@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from markupsafe import escape
 
 from app.db import execute, query_one
 from app.email import send_email
@@ -63,7 +64,7 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
             "Verify your Matcha account",
             f"""
             <h1>Welcome to Matcha! 🐦</h1>
-            <p>Thanks for signing up, {first_name}!</p>
+            <p>Thanks for signing up, {escape(first_name)}!</p>
             <p><a href="{verify_link}">Verify your email</a></p>
             <p>If you did not create this account, ignore this email.</p>
             """,
