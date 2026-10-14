@@ -2,6 +2,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from app import security
 from app.config import Config
@@ -206,7 +207,9 @@ class CsrfProtectedAuthenticatedFormsTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_profile_edit_post_with_valid_csrf_token_is_accepted(self):
+    # /profile/edit validates the city through Nominatim: keep the test offline.
+    @patch("app.profile.routes.check_if_city_valid")
+    def test_profile_edit_post_with_valid_csrf_token_is_accepted(self, mock_city_check):
         token = self._login_and_get_token("reporter")
 
         response = self.client.post(
