@@ -1,7 +1,8 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Flask, g, session
+from flask import Flask, flash, g, redirect, session, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 from dotenv import load_dotenv
 
 from app.routes import main_bp
@@ -9,7 +10,7 @@ from app.auth.routes import auth_bp
 from app.users.routes import users_bp
 from app.match.routes import match_bp
 from app.chat.routes import chat_bp
-from app.profile.routes import profile_bp
+from app.profile.routes import _is_form_request, profile_bp
 from app.notifications.routes import notifications_bp
 
 from app.db import close_db, init_db, query_one, execute
@@ -44,6 +45,17 @@ def create_app():
     @app.errorhandler(APIError)
     def api_error_handler(err):
         return {"error": err.message}, err.status
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(_):
+        # Also reached when the body is first parsed in a before_request hook
+        # (csrf_protect reads request.form), so the body must not be read here.
+        max_mb = app.config["MAX_CONTENT_LENGTH"] / (1024 * 1024)
+        message = f"Upload too large: the maximum size is {max_mb:g} MB."
+        if _is_form_request():
+            flash(message, "error")
+            return redirect(url_for("profile.edit_profile"))
+        return {"error": message}, 413
 
     @app.before_request
     def load_current_user():

@@ -36,8 +36,12 @@ profile_bp = Blueprint("profile", __name__)
 
 
 def _is_form_request():
-    """True for a plain HTML form submission (vs. a JSON API call)."""
-    return request.get_json(silent=True) is None and not request.is_json
+    """True for a plain HTML form submission (vs. a JSON API call).
+
+    Header-based only: it must never read the body, since it is also used by
+    the 413 handler in app/__init__.py where reading the body would re-raise.
+    """
+    return not request.is_json
 
 
 def _compute_online(online_until: str | None) -> bool:
@@ -151,7 +155,10 @@ def edit_profile():
     profile = _profile_payload(g.current_user["id"], include_email=True)
     pending_email_change = _pending_email_change(g.current_user["id"])
     return render_template(
-        "profile_edit.html", profile=profile, pending_email_change=pending_email_change
+        "profile_edit.html",
+        profile=profile,
+        pending_email_change=pending_email_change,
+        max_upload_bytes=current_app.config["MAX_CONTENT_LENGTH"],
     )
 
 def _update_profile(user_id: int, data):
@@ -314,17 +321,43 @@ def edit_profile_submit():
     return redirect(url_for("profile.edit_profile"))
 
 ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+PHOTO_FORMAT_ERROR = "Photo must be a PNG, JPEG, GIF or WebP image"
+
+
+def _detect_photo_format(stream):
+    """Return the canonical extension matching the stream's magic bytes, or None.
+
+    The stream is rewound to 0 so the caller can save the full content.
+    """
+    head = stream.read(12)
+    stream.seek(0)
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if len(head) == 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    return None
+
 
 def _save_uploaded_photo(file_storage):
     filename = secure_filename(file_storage.filename or "")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if not filename or ext not in ALLOWED_PHOTO_EXTENSIONS:
-        raise APIError("Photo must be one of: png, jpg, jpeg, gif, webp", 400)
+        raise APIError(PHOTO_FORMAT_ERROR, 400)
+
+    # The client filename/extension is untrusted: the stored extension comes
+    # from the actual content signature.
+    detected_ext = _detect_photo_format(file_storage.stream)
+    if detected_ext is None:
+        raise APIError(PHOTO_FORMAT_ERROR, 400)
 
     upload_folder = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_folder, exist_ok=True)
 
-    unique_name = f"{secrets.token_hex(8)}.{ext}"
+    unique_name = f"{secrets.token_hex(8)}.{detected_ext}"
     file_storage.save(os.path.join(upload_folder, unique_name))
 
     return f"/static/uploads/{unique_name}"
