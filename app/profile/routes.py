@@ -1,5 +1,7 @@
+import io
 import secrets
 import os
+import warnings
 from datetime import datetime, timezone
 
 from app.config import UserConfig
@@ -18,6 +20,7 @@ from flask import (
     current_app,
 )
 
+from PIL import Image, ImageOps, ImageSequence
 from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
@@ -324,22 +327,58 @@ ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 PHOTO_FORMAT_ERROR = "Photo must be a PNG, JPEG, GIF or WebP image"
 
 
-def _detect_photo_format(stream):
-    """Return the canonical extension matching the stream's magic bytes, or None.
+# Process-global Pillow setting: images above this pixel count trigger a
+# DecompressionBombWarning (rejected below), above twice it an error.
+Image.MAX_IMAGE_PIXELS = 25_000_000
+MAX_PHOTO_FRAMES = 100
+PHOTO_FORMAT_EXTENSIONS = {"PNG": "png", "JPEG": "jpg", "GIF": "gif", "WEBP": "webp"}
+# Only rendering-related info survives re-encoding (no EXIF/GPS, ICC, comments...).
+PHOTO_FRAME_INFO_KEYS = ("transparency", "duration")
 
-    The stream is rewound to 0 so the caller can save the full content.
+
+def _reencode_photo(data):
+    """Fully decode an uploaded image and re-encode it without metadata.
+
+    Returns (bytes, extension); raises APIError if the content is not a
+    complete, reasonably sized PNG/JPEG/GIF/WebP image.
     """
-    head = stream.read(12)
-    stream.seek(0)
-    if head.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if head.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if head[:6] in (b"GIF87a", b"GIF89a"):
-        return "gif"
-    if len(head) == 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-        return "webp"
-    return None
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with Image.open(io.BytesIO(data)) as probe:
+                probe.verify()
+            with Image.open(io.BytesIO(data)) as img:
+                if any(issubclass(w.category, Image.DecompressionBombWarning) for w in caught):
+                    raise APIError(PHOTO_FORMAT_ERROR, 400)
+                ext = PHOTO_FORMAT_EXTENSIONS.get(img.format)
+                n_frames = getattr(img, "n_frames", 1)
+                total_pixels = img.width * img.height * n_frames
+                if ext is None or n_frames > MAX_PHOTO_FRAMES or total_pixels > Image.MAX_IMAGE_PIXELS:
+                    raise APIError(PHOTO_FORMAT_ERROR, 400)
+
+                frames = []
+                for frame in ImageSequence.Iterator(img):
+                    frame = ImageOps.exif_transpose(frame)
+                    if ext == "jpg" and frame.mode not in ("RGB", "L"):
+                        frame = frame.convert("RGB")
+                    frame.info = {k: frame.info[k] for k in PHOTO_FRAME_INFO_KEYS if k in frame.info}
+                    frames.append(frame)
+
+                out = io.BytesIO()
+                if len(frames) > 1:
+                    frames[0].save(
+                        out,
+                        format=img.format,
+                        save_all=True,
+                        append_images=frames[1:],
+                        duration=[f.info.get("duration", 100) for f in frames],
+                        loop=img.info.get("loop", 0),
+                    )
+                else:
+                    frames[0].save(out, format=img.format)
+    except (OSError, SyntaxError, ValueError, EOFError, Image.DecompressionBombError):
+        raise APIError(PHOTO_FORMAT_ERROR, 400)
+    return out.getvalue(), ext
 
 
 def _save_uploaded_photo(file_storage):
@@ -348,17 +387,16 @@ def _save_uploaded_photo(file_storage):
     if not filename or ext not in ALLOWED_PHOTO_EXTENSIONS:
         raise APIError(PHOTO_FORMAT_ERROR, 400)
 
-    # The client filename/extension is untrusted: the stored extension comes
-    # from the actual content signature.
-    detected_ext = _detect_photo_format(file_storage.stream)
-    if detected_ext is None:
-        raise APIError(PHOTO_FORMAT_ERROR, 400)
+    # The client filename/extension is untrusted: the stored content and
+    # extension come from decoding and re-encoding the actual image.
+    content, detected_ext = _reencode_photo(file_storage.stream.read())
 
     upload_folder = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_folder, exist_ok=True)
 
     unique_name = f"{secrets.token_hex(8)}.{detected_ext}"
-    file_storage.save(os.path.join(upload_folder, unique_name))
+    with open(os.path.join(upload_folder, unique_name), "wb") as fh:
+        fh.write(content)
 
     return f"/static/uploads/{unique_name}"
 
