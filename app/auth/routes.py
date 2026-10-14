@@ -77,6 +77,9 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
+    if g.current_user:
+        return redirect(url_for("main.home"))
+
     if request.method == "GET":
         return render_template("register.html")
 
