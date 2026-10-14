@@ -9,6 +9,7 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/auth/routes.py::request_password_reset` (`test_auth_reset.py`) — non-fuite d'existence de compte : le flux token/email s'exécute toujours pour un compte existant, et la réponse HTTP est indiscernable entre un compte existant et un compte inconnu.
 - Non-fuite d'existence de compte lors d'une panne d'envoi d'email (`test_auth_email_errors.py`, régression issue #61 sur `app/auth/routes.py::request_password_reset` et `send_verification_email`) — un échec `send_email` ne doit jamais se traduire par un statut HTTP différent entre un compte existant et un compte inconnu.
 - `app/match/routes.py` — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
+- `app/auth/routes.py::resend_verification_email` (`test_auth_resend_verification.py`, issue #9) — renvoi du lien de vérification pour un compte non vérifié : invalidation des liens non utilisés précédents, aucun envoi pour un compte vérifié ou inconnu, réponse indiscernable quel que soit l'état du compte.
 - `app/profile/data.py` — mise à jour email/prénom/nom (`UserUpdater`).
 - `app/profile/geolocation.py` — extraction ville/quartier depuis les coordonnées GPS, validation de ville (géocodeur mocké, aucun appel réseau).
 - `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
