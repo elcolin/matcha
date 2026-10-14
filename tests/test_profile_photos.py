@@ -152,7 +152,7 @@ class SaveUploadedPhotoTests(DBTestCase):
             "truncated real jpeg": (_noisy_bytes("JPEG")[:-400], "photo.jpg"),
             "truncated real png": (_noisy_bytes("PNG")[:-400], "photo.png"),
             "valid png header followed by garbage": (PNG_BYTES[:33] + b"\x00garbage" * 10, "photo.png"),
-            "too many animation frames": (_animated_bytes("GIF", 101), "photo.gif"),
+            "gif with truncated extra frame descriptor": (GIF_BYTES[:-1] + b",", "photo.gif"),
         }
         for label, (content, filename) in cases.items():
             with self.subTest(label):
@@ -172,7 +172,6 @@ class SaveUploadedPhotoTests(DBTestCase):
         saved_path = self._saved_path(url)
         self.assertTrue(saved_path.resolve().is_relative_to(Path(self.app.config["UPLOAD_FOLDER"]).resolve()))
         self.assertTrue(saved_path.exists())
-
 
     def _assert_rejected(self, content, filename):
         with self.assertRaises(APIError) as ctx:

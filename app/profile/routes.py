@@ -380,7 +380,11 @@ def _reencode_photo(data):
                     )
                 else:
                     frames[0].save(out, format=img.format)
-    except (OSError, SyntaxError, ValueError, EOFError, Image.DecompressionBombError):
+    except APIError:
+        raise
+    except Exception:
+        # Pillow does not guarantee its exception set on malformed input
+        # (e.g. struct.error): any decode failure is an invalid photo.
         raise APIError(PHOTO_FORMAT_ERROR, 400)
     return out.getvalue(), ext
 
