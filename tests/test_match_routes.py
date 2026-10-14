@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from app.db import execute
 from app.match.routes import (
@@ -149,6 +150,15 @@ class CandidateProfilesTests(DBTestCase):
 
         self.assertEqual(candidate_profiles(viewer), [])
 
+    def test_candidates_never_expose_another_users_email(self):
+        viewer = self.create_user(email="v@example.com", username="viewer")
+        other = self.create_user(email="secret@example.com", username="other")
+
+        result = candidate_profiles(viewer)
+
+        self.assertEqual([c["id"] for c in result], [other])
+        self.assertNotIn("email", result[0])
+
     def test_ranks_same_city_candidates_first(self):
         viewer = self.create_user(email="v@example.com", username="viewer")
         execute("UPDATE profiles SET city = 'Paris' WHERE user_id = ?", (viewer,))
@@ -162,6 +172,20 @@ class CandidateProfilesTests(DBTestCase):
         result = candidate_profiles(viewer)
 
         self.assertEqual([c["id"] for c in result], [same_city, other_city])
+
+    def test_candidates_include_online_status(self):
+        viewer = self.create_user(email="v@example.com", username="viewer")
+        online_candidate = self.create_user(email="on@example.com", username="online_user")
+        offline_candidate = self.create_user(email="off@example.com", username="offline_user")
+
+        future = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
+        execute("UPDATE users SET online_until = ? WHERE id = ?", (future, online_candidate))
+
+        result = candidate_profiles(viewer)
+        by_id = {c["id"]: c for c in result}
+
+        self.assertTrue(by_id[online_candidate]["online"])
+        self.assertFalse(by_id[offline_candidate]["online"])
 
 
 if __name__ == "__main__":

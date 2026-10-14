@@ -1,6 +1,8 @@
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 
 from app.db import execute, query_one
@@ -80,21 +82,30 @@ def register():
 
     data = request.get_json(silent=True) or request.form
 
-    required = ["email", "username", "last_name", "first_name", "password"]
+    required = ["email", "username", "last_name", "first_name", "password", "confirm"]
     missing = [f for f in required if not str(data.get(f, "")).strip()]
     if missing:
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
-    is_ok, reason = validate_password_strength(data["password"])
+    try:
+        email = validate_email(data["email"].strip(), check_deliverability=False).normalized
+    except EmailNotValidError:
+        return render_template("register.html", error="Invalid email address")
+
+    password = str(data["password"])
+    if password != str(data["confirm"]):
+        return render_template("register.html", error="Passwords do not match")
+
+    is_ok, reason = validate_password_strength(password)
     if not is_ok:
         return render_template("register.html", error=reason)
 
     try:
         cur = execute(
             "INSERT INTO users (email, username, last_name, first_name, password_hash) VALUES (?, ?, ?, ?, ?)",
-            (data["email"].strip().lower(), data["username"].strip(),
+            (email, data["username"].strip(),
              data["last_name"].strip(), data["first_name"].strip(),
-             hash_password(data["password"])),
+             hash_password(password)),
         )
     except Exception:
         return render_template("register.html", error="Email or username already exists")
@@ -102,11 +113,11 @@ def register():
     user_id = cur.lastrowid
     _ensure_profile_exists(user_id)
 
-    send_verification_email(user_id, data["email"].strip().lower(), data["first_name"].strip())
+    send_verification_email(user_id, email, data["first_name"].strip())
 
     return render_template(
         "register.html",
-        success=f"Account created! Check {data['email'].strip().lower()} for your verification email.",
+        success=f"Account created! Check {email} for your verification email.",
     )
 
 
@@ -290,3 +301,78 @@ def confirm_password_reset(token):
     execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
 
     return render_form(success="Your password has been updated. You can now log in.")
+
+
+@auth_bp.route("/email-change/confirm/<token>", methods=["GET"])
+def confirm_email_change(token):
+    """Apply a deferred profile email change (see app.profile.data.UserUpdater.
+    request_email_change), which only ever inserts a pending row: the active
+    email is updated here, and only here, once the link sent to the new
+    address is actually clicked. No login_required: the click may come from a
+    different browser/session than the one that requested the change.
+    """
+
+    def render_result(message, success):
+        return (
+            render_template_string(
+                """
+                {% extends "components/base.html" %}
+                {% block title %}Matcha — Email Change{% endblock %}
+                {% block content %}
+                <div class="d-flex justify-content-center pt-5">
+                  <div class="card shadow-sm" style="width:360px">
+                    <div class="card-body p-4">
+                      <h5 class="card-title mb-3">Email address change</h5>
+                      {% if success %}
+                        <div class="alert alert-success">{{ message }}</div>
+                      {% else %}
+                        <div class="alert alert-danger">{{ message }}</div>
+                      {% endif %}
+                      <a href="{{ url_for('auth.login') }}" class="btn btn-danger w-100">Log in</a>
+                    </div>
+                  </div>
+                </div>
+                {% endblock %}
+                """,
+                message=message,
+                success=success,
+            ),
+            200 if success else 400,
+        )
+
+    try:
+        user_id = read_signed_token(
+            current_app.config["SECRET_KEY"],
+            token,
+            "change_email",
+            current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
+        )
+    except Exception:
+        return render_result("This confirmation link is invalid or has expired.", False)
+
+    row = query_one(
+        "SELECT new_email, expires_at, used_at FROM email_changes WHERE token = ?",
+        (token,),
+    )
+    if not row or row["used_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+        return render_result("This confirmation link is no longer valid.", False)
+
+    try:
+        execute(
+            "UPDATE users SET email = ?, email_verified = 1 WHERE id = ?",
+            (row["new_email"], user_id),
+        )
+    except sqlite3.IntegrityError:
+        # Another account grabbed this email address before the link was clicked:
+        # consume the token anyway so it cannot be replayed, and keep the active
+        # email unchanged (see the "first confirmed wins" decision in the feature plan).
+        execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+        return render_result(
+            "This email address is already used by another account. "
+            "Your current address stays active.",
+            False,
+        )
+
+    execute("UPDATE email_changes SET used_at = ? WHERE token = ?", (utcnow_iso(), token))
+
+    return render_result("Your email address has been updated successfully.", True)

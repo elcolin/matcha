@@ -7,12 +7,12 @@ from app.utils import APIError
 
 class GetLocationFromCoordsTests(unittest.TestCase):
     @patch("app.profile.geolocation.geolocator")
-    def test_returns_none_when_reverse_geocoding_finds_nothing(self, mock_geolocator):
+    def test_raises_api_error_when_reverse_geocoding_finds_nothing(self, mock_geolocator):
         mock_geolocator.reverse.return_value = None
 
-        result = geolocation.get_location_from_coords(48.85, 2.35)
+        with self.assertRaises(APIError):
+            geolocation.get_location_from_coords(48.85, 2.35)
 
-        self.assertIsNone(result)
         mock_geolocator.reverse.assert_called_once_with((48.85, 2.35), exactly_one=True)
 
     @patch("app.profile.geolocation.geolocator")

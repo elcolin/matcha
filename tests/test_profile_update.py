@@ -88,6 +88,16 @@ class UpdateProfileValidationTests(DBTestCase):
         self.assertEqual(row["first_name"], "Alicia")
         self.assertEqual(row["last_name"], "Smith")
 
+    @patch("app.profile.routes.check_if_city_valid")
+    def test_email_field_is_not_applied_immediately(self, mock_check_city):
+        """Email changes go through a confirmation step (see
+        app.profile.routes.edit_profile_submit / app.profile.data.UserUpdater.request_email_change);
+        `_update_profile` itself must never write to users.email."""
+        _update_profile(self.user_id, {"email": "new@example.com", "city": "Lyon"})
+
+        row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
+        self.assertEqual(row["email"], "a@example.com")
+
 
 if __name__ == "__main__":
     unittest.main()

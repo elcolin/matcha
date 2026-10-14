@@ -9,6 +9,8 @@
                     {% for m in matches %}
                         <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
                            class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
+                            <span class="online-indicator {{ 'online' if m.online else 'offline' }}"
+                                  title="{{ 'Online' if m.online else 'Offline' }}"></span>
                             {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
                         </a>
                     {% else %}
@@ -19,7 +21,22 @@
             <div class="col-md-8">
                 {% if active %}
                     <div class="card shadow-sm">
-                        <div class="card-header">Conversation with {{ active.first_name }} {{ active.last_name }}</div>
+                        <div class="card-header">
+                            Conversation with {{ active.first_name }} {{ active.last_name }}
+                            <p class="online-status mb-0" id="partner-online-status">
+                                <span id="partner-online-indicator"
+                                      class="online-indicator {{ 'online' if active.online else 'offline' }}"></span>
+                                <span id="partner-online-label">
+                                    {% if active.online %}
+                                        Online now
+                                    {% elif active.last_seen_at %}
+                                        Last seen at {{ active.last_seen_at }}
+                                    {% else %}
+                                        Offline
+                                    {% endif %}
+                                </span>
+                            </p>
+                        </div>
                         <div class="card-body"
                              id="messages"
                              style="height: 400px;
@@ -113,6 +130,33 @@
   }
   pingPresence();
   setInterval(pingPresence, 8000);
+
+  // Refresh the partner's online indicator without a full page reload, well
+  // under the project's 10s real-time requirement.
+  const ONLINE_POLL_INTERVAL_MS = 5000;
+  const onlineIndicator = document.getElementById('partner-online-indicator');
+  const onlineLabel = document.getElementById('partner-online-label');
+
+  async function refreshPartnerOnlineStatus() {
+    try {
+      const response = await fetch(`/users/${otherUserId}/online-status`);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!onlineIndicator || !onlineLabel) return;
+      onlineIndicator.classList.toggle('online', data.online);
+      onlineIndicator.classList.toggle('offline', !data.online);
+      if (data.online) {
+        onlineLabel.textContent = 'Online now';
+      } else if (data.last_seen_at) {
+        onlineLabel.textContent = `Last seen at ${data.last_seen_at}`;
+      } else {
+        onlineLabel.textContent = 'Offline';
+      }
+    } catch (_) {
+      // Network hiccup: keep the last known value, next poll will retry.
+    }
+  }
+  setInterval(refreshPartnerOnlineStatus, ONLINE_POLL_INTERVAL_MS);
         </script>
     {% endif %}
 {% endblock %}
