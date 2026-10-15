@@ -2,8 +2,11 @@
     <div class="card profile-card shadow-sm">
         <img src="{{ profile.image }}" class="card-img-top">
         <div class="card-body text-center">
-            <h5>{{ profile.name }}, {{ profile.age }}</h5>
-            <p class="text-muted">{{ profile.city }} • {{ profile.neighborhood }}</p>
+            <h5>{{ profile.name }}{% if profile.age %}, {{ profile.age }}{% endif %}</h5>
+            {% set location_parts = [profile.city, profile.neighborhood] | select | list %}
+            {% if location_parts %}
+            <p class="text-muted">{{ location_parts | join(' • ') }}</p>
+            {% endif %}
             <p class="online-status">
                 <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
                 {{ 'Online' if profile.online else 'Offline' }}
