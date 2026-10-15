@@ -20,11 +20,14 @@ class CalculateDistanceTests(unittest.TestCase):
         self.assertEqual(calculate_distance(1.0, 2.0, None, 3.0), 99999.0)
         self.assertEqual(calculate_distance(1.0, 2.0, 3.0, None), 99999.0)
 
-    def test_computes_manhattan_like_distance_in_km(self):
-        # 1 degree ~= 111km on both axes in this simplified model
-        distance = calculate_distance(48.0, 2.0, 49.0, 3.0)
+    def test_computes_great_circle_distance_in_km(self):
+        # Paris -> Lyon is ~392 km as the crow flies (haversine, R = 6371 km).
+        paris, lyon = (48.8566, 2.3522), (45.7640, 4.8357)
 
-        self.assertAlmostEqual(distance, 222.0)
+        distance = calculate_distance(*paris, *lyon)
+
+        self.assertAlmostEqual(distance, 392, delta=5)
+        self.assertAlmostEqual(calculate_distance(*lyon, *paris), distance)
 
     def test_zero_distance_for_identical_coordinates(self):
         self.assertEqual(calculate_distance(48.85, 2.35, 48.85, 2.35), 0.0)

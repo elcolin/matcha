@@ -1,3 +1,5 @@
+import math
+
 from flask import Blueprint, g, jsonify, request
 
 from app.db import query_all
@@ -7,12 +9,18 @@ from app.utils import is_blocked_between, login_required
 match_bp = Blueprint("match", __name__, url_prefix="/match")
 MISSING_DISTANCE_KM = 99999
 
+EARTH_RADIUS_KM = 6371.0
+
+
 def calculate_distance(lat1, lon1, lat2, lon2):
+    """Great-circle (haversine) distance in km; sentinel if any coord is missing."""
     if None in (lat1, lon1, lat2, lon2):
-        return 99999.0
-    lat_diff = abs(float(lat1) - float(lat2)) * 111.0
-    lon_diff = abs(float(lon1) - float(lon2)) * 111.0
-    return lat_diff + lon_diff
+        return float(MISSING_DISTANCE_KM)
+    phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+    d_phi = phi2 - phi1
+    d_lambda = math.radians(float(lon2) - float(lon1))
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(min(1.0, a)))
 
 
 def is_gender_compatible(current_pref, candidate_gender):
