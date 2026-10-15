@@ -15,9 +15,9 @@ from app.utils import (
 import json
 from app.db import execute, query_all, query_one
 
-notifications_bp = Blueprint("notifications", __name__)
+notifications_bp = Blueprint("notifications", __name__, url_prefix="/notifications")
 
-@notifications_bp.route("/notifications/unread-count", methods=["GET"])
+@notifications_bp.route("/unread-count", methods=["GET"])
 @login_required
 def unread_notifications_count():
     current = g.current_user["id"]
@@ -28,7 +28,7 @@ def unread_notifications_count():
     return jsonify({"unread": row["c"] if row else 0})
 
 
-@notifications_bp.route("/notifications/mark-read", methods=["POST"])
+@notifications_bp.route("/mark-read", methods=["POST"])
 @login_required
 def mark_notifications_read():
     current = g.current_user["id"]
@@ -53,7 +53,7 @@ def _notifications_for(user_id, unread_only=False):
     return payload
 
 
-@notifications_bp.route("/notifications/view", methods=["GET"])
+@notifications_bp.route("/view", methods=["GET"])
 @login_required
 def notifications_view():
     current = g.current_user["id"]
