@@ -130,7 +130,7 @@ class NotificationCreationTests(unittest.TestCase):
     def test_viewing_profile_without_login_creates_no_notification(self):
         response = self.client.get(f"/profile/{self.user_b}?format=json")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(self.notifications_for(self.user_b), [])
 
     # -- like / match -----------------------------------------------------

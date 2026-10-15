@@ -12,6 +12,7 @@ from app.match.routes import match_bp
 from app.chat.routes import chat_bp
 from app.profile.routes import _is_form_request, profile_bp
 from app.notifications.routes import notifications_bp
+from app.search.routes import search_bp
 
 from app.db import close_db, init_db, query_one, execute
 from app.utils import csrf_protect, get_csrf_token
@@ -30,6 +31,7 @@ def create_app():
     app.register_blueprint(chat_bp)
     app.register_blueprint(profile_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(search_bp)
 
     app.teardown_appcontext(close_db)
 
