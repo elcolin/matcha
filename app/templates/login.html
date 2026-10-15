@@ -10,6 +10,11 @@
                 <h5 class="card-title mb-4">Login</h5>
                 {% if error %}
                     <div class="alert alert-danger">{{ error }}</div>
+                    {% if unverified %}
+                        <p class="mb-3" style="font-size:0.85rem">
+                            <a href="{{ url_for('auth.resend_verification_email') }}">Resend verification email</a>
+                        </p>
+                    {% endif %}
                 {% endif %}
                 <form method="POST" action="/login">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

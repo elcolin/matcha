@@ -32,7 +32,7 @@ from app.utils import (
     update_popularity,
 )
 
-profile_bp = Blueprint("profile", __name__)
+profile_bp = Blueprint("profile", __name__, url_prefix="/profile")
 
 
 def _is_form_request():
@@ -47,14 +47,16 @@ def _compute_online(online_until: str | None) -> bool:
     return datetime.fromisoformat(online_until) > datetime.now(timezone.utc)
 
 
-def _profile_payload(user_id: int, include_email: bool = False):
+def _profile_payload(user_id: int, include_email: bool = False, include_coordinates: bool = False):
     """Build the profile dict shared by the profile/edit/match/chat views.
 
-    `email` is deliberately left out unless `include_email=True` is passed
-    explicitly by an owner-only call site (e.g. GET /profile/edit): this
-    payload is also used for third-party profiles (candidate suggestions,
-    profile detail of another user), which must never expose someone else's
-    email address.
+    `email` and the exact `latitude`/`longitude` are deliberately left out
+    unless `include_email=True` / `include_coordinates=True` is passed
+    explicitly by an owner-only or internal call site (e.g. GET /profile/edit,
+    distance computation in candidate_profiles): this payload is also used for
+    third-party profiles (candidate suggestions, profile detail of another
+    user), which must never expose someone else's email address or precise
+    location.
     """
     row = query_one(
         """
@@ -99,8 +101,6 @@ def _profile_payload(user_id: int, include_email: bool = False):
         "bio": row["bio"] or "",
         "city": row["city"],
         "neighborhood": row["neighborhood"],
-        "latitude": row["latitude"],
-        "longitude": row["longitude"],
         "location_consent_gps": bool(row["location_consent_gps"]),
         "popularity_score": row["popularity_score"],
         "age": row["age"],
@@ -112,6 +112,10 @@ def _profile_payload(user_id: int, include_email: bool = False):
 
     if include_email:
         payload["email"] = row["email"]
+
+    if include_coordinates:
+        payload["latitude"] = row["latitude"]
+        payload["longitude"] = row["longitude"]
 
     return payload
 
@@ -167,10 +171,10 @@ def _pending_email_change(user_id: int):
     )
 
 
-@profile_bp.route("/profile/edit", methods=["GET"])
+@profile_bp.route("/edit", methods=["GET"])
 @login_required
 def edit_profile():
-    profile = _profile_payload(g.current_user["id"], include_email=True)
+    profile = _profile_payload(g.current_user["id"], include_email=True, include_coordinates=True)
     pending_email_change = _pending_email_change(g.current_user["id"])
     return render_template(
         "profile_edit.html", profile=profile, pending_email_change=pending_email_change
@@ -319,7 +323,7 @@ def _request_email_change_and_notify(user_id: int, new_email):
     )
 
 
-@profile_bp.route("/profile/edit", methods=["POST"])
+@profile_bp.route("/edit", methods=["POST"])
 @login_required
 def edit_profile_submit():
     user_id = g.current_user["id"]
@@ -352,7 +356,7 @@ def _save_uploaded_photo(file_storage):
     return f"/static/uploads/{unique_name}"
 
 
-@profile_bp.route("/profile/edit/photos", methods=["POST", "DELETE"])
+@profile_bp.route("/edit/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
@@ -408,7 +412,7 @@ def profile_photos():
     return jsonify(_profile_payload(user_id)["photos"])
 
 
-@profile_bp.route("/profile/edit/photos/delete", methods=["POST"])
+@profile_bp.route("/edit/photos/delete", methods=["POST"])
 @login_required
 def profile_photos_delete_form():
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
@@ -423,19 +427,18 @@ def profile_photos_delete_form():
     return redirect(url_for("profile.edit_profile"))
 
 
-@profile_bp.route("/profile/<int:id>", methods=["GET"])
+@profile_bp.route("/<int:id>", methods=["GET"])
+@login_required
 def detail(id):
     profile = _profile_payload(id)
 
     if profile is None:
         return "Profile not found", 404
 
-    viewer = g.get("current_user")
-    can_interact = bool(viewer)
-    profile["can_interact"] = can_interact
-    is_self = bool(viewer and viewer["id"] == id)
+    viewer = g.current_user
+    is_self = viewer["id"] == id
     profile["is_self"] = is_self
-    if can_interact and not is_self:
+    if not is_self:
 
         if not is_blocked_between(viewer["id"], id):
             recent_view = query_one(
@@ -481,6 +484,12 @@ def detail(id):
                 (id, viewer["id"]),
             )
         )
+        profile["reported_by_me"] = bool(
+            query_one(
+                "SELECT 1 FROM reports WHERE reporter_id = ? AND reported_id = ?",
+                (viewer["id"], id),
+            )
+        )
 
     if request.args.get("format") == "json":
         return jsonify(profile)
@@ -496,7 +505,7 @@ def detail(id):
     return render_template("profile.html", profile=profile)
 
 
-@profile_bp.route("/profile/<int:id>/like", methods=["POST", "DELETE"])
+@profile_bp.route("/<int:id>/like", methods=["POST", "DELETE"])
 @login_required
 def like_profile(id):
     current = g.current_user["id"]
@@ -562,7 +571,7 @@ def like_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/unlike", methods=["POST"])
+@profile_bp.route("/<int:id>/unlike", methods=["POST"])
 @login_required
 def unlike_profile_form(id):
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
@@ -579,7 +588,7 @@ def unlike_profile_form(id):
     return redirect(url_for("profile.detail", id=id))
 
 
-@profile_bp.route("/profile/<int:id>/unblock", methods=["POST"])
+@profile_bp.route("/<int:id>/unblock", methods=["POST"])
 @login_required
 def unblock_profile(id):
     current = g.current_user["id"]
@@ -604,7 +613,7 @@ def unblock_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
+@profile_bp.route("/<int:id>/block", methods=["POST", "DELETE"])
 @login_required
 def block_profile(id):
     current = g.current_user["id"]
@@ -652,15 +661,17 @@ def block_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/report", methods=["POST"])
+@profile_bp.route("/<int:id>/report", methods=["POST"])
 @login_required
 def report_profile(id):
     current = g.current_user["id"]
     if current == id:
         raise APIError("Cannot report yourself", 400)
+    if not query_one("SELECT 1 FROM users WHERE id = ?", (id,)):
+        raise APIError("Profile not found", 404)
 
     execute(
-        "INSERT OR REPLACE INTO reports (reporter_id, reported_id, reason) VALUES (?, ?, 'fake_account')",
+        "INSERT OR IGNORE INTO reports (reporter_id, reported_id, reason) VALUES (?, ?, 'fake_account')",
         (current, id),
     )
     update_popularity(id)
