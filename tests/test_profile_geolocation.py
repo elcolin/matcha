@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from geopy.exc import (
     GeocoderRateLimited,
@@ -138,6 +138,56 @@ class GeocodeCityTests(unittest.TestCase):
                 with self.assertRaises(APIError) as ctx:
                     geolocation.geocode_city("Paris")
                 self.assertTrue(ctx.exception.message)
+
+    @patch("app.profile.geolocation.geolocator")
+    def test_unknown_neighborhood_falls_back_to_city_alone(self, mock_geolocator):
+        mock_geolocator.geocode.side_effect = [
+            None,
+            MagicMock(latitude=48.8566, longitude=2.3522),
+        ]
+
+        result = geolocation.geocode_city("Paris", "Nowhereville")
+
+        self.assertEqual(result, (48.8566, 2.3522))
+        self.assertEqual(
+            mock_geolocator.geocode.call_args_list,
+            [
+                call("Nowhereville, Paris", exactly_one=True),
+                call("Paris", exactly_one=True),
+            ],
+        )
+
+    @patch("app.profile.geolocation.geolocator")
+    def test_unknown_neighborhood_and_city_raises_api_error(self, mock_geolocator):
+        mock_geolocator.geocode.return_value = None
+
+        with self.assertRaises(APIError) as ctx:
+            geolocation.geocode_city("Atlantis", "Nowhereville")
+
+        self.assertEqual(mock_geolocator.geocode.call_count, 2)
+        self.assertEqual(ctx.exception.message, "'Atlantis' is not a recognized location.")
+
+    @patch("app.profile.geolocation.geolocator")
+    def test_service_error_is_not_retried_with_city_alone(self, mock_geolocator):
+        for exc in (GeocoderUnavailable("unavailable"), OSError("network down")):
+            with self.subTest(exc=type(exc).__name__):
+                mock_geolocator.reset_mock()
+                mock_geolocator.geocode.side_effect = exc
+                with self.assertRaises(APIError) as ctx:
+                    geolocation.geocode_city("Paris", "Le Marais")
+                self.assertEqual(ctx.exception.status, 503)
+                mock_geolocator.geocode.assert_called_once_with(
+                    "Le Marais, Paris", exactly_one=True
+                )
+
+    @patch("app.profile.geolocation.geolocator")
+    def test_unknown_city_without_neighborhood_is_queried_once(self, mock_geolocator):
+        mock_geolocator.geocode.return_value = None
+
+        with self.assertRaises(APIError):
+            geolocation.geocode_city("Atlantis")
+
+        mock_geolocator.geocode.assert_called_once_with("Atlantis", exactly_one=True)
 
 
 if __name__ == "__main__":

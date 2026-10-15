@@ -48,9 +48,16 @@ def get_location_from_coords(lat, lon):
 
 
 def geocode_city(city, neighborhood=None):
-    """Forward-geocode a city (optionally narrowed by neighborhood) to (lat, lon)."""
+    """Forward-geocode a city (optionally narrowed by neighborhood) to (lat, lon).
+
+    An unknown neighborhood falls back to the city alone; service errors
+    (APIError 503 from _call_geocoder) propagate without retry.
+    """
     query = f"{neighborhood}, {city}" if neighborhood else city
     location = _call_geocoder(geolocator.geocode, query, exactly_one=True)
+    if location is None and neighborhood:
+        query = city
+        location = _call_geocoder(geolocator.geocode, query, exactly_one=True)
     if location is None:
         raise APIError(f"'{query}' is not a recognized location.")
     return (location.latitude, location.longitude)
