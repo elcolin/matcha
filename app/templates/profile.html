@@ -19,6 +19,7 @@
                             {{ 'Online' if profile.online else 'Offline' }}
                         </p>
                         <p class="text-muted">{{ profile.city }}</p>
+                        <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
                         <!-- BIO -->
                         <p>{{ profile.bio }}</p>
                         <!-- TAGS -->
@@ -63,12 +64,25 @@
                                             <button type="submit" class="btn btn-outline-secondary action-btn">Unblock</button>
                                         </form>
                                     {% endif %}
+                                    {% if profile.reported_by_me %}
+                                        <button type="button"
+                                                class="btn btn-outline-secondary action-btn"
+                                                disabled
+                                                aria-disabled="true">Reported</button>
+                                    {% else %}
+                                        <form method="post"
+                                              action="{{ url_for('profile.report_profile', id=profile.id) }}"
+                                              onsubmit="return confirm('Report this profile as a fake account?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
+                                        </form>
+                                    {% endif %}
+                                {% elif profile.is_self %}
+                                    <div class="card profile-card" id="profileCard">
+                                        <a href="{{ url_for('profile.edit_profile', id=profile.id) }}"
+                                           class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
+                                    </div>
                                 {% endif %}
-                                <form method="post"
-                                      action="{{ url_for('profile.report_profile', id=profile.id) }}">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
-                                </form>
                             {% elif profile.is_self %}
                                 <div class="card profile-card" id="profileCard">
                                     <a href="{{ url_for('profile.edit_profile', id=profile.id) }}"
