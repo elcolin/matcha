@@ -179,14 +179,34 @@ def _parse_consent(value):
     return bool(value)
 
 
-def _resolve_location(data):
+COORD_TOLERANCE = 1e-6
+
+
+def _normalize_place(value):
+    """Comparison key for a city/neighborhood: trimmed, case-insensitive, '' == None."""
+    return (value or "").strip().lower() or None
+
+
+def _same_coordinate(a, b):
+    return a is not None and b is not None and abs(a - b) <= COORD_TOLERANCE
+
+
+def _resolve_location(user_id, data):
     """Validate the submitted location and resolve it through the geocoder.
 
     GPS consent: reverse-geocode the submitted coordinates to a city.
     Manual mode: city is required, coordinates come from forward geocoding
-    (any submitted lat/lon is ignored). Raises APIError, never writes.
+    (any submitted lat/lon is ignored). An unchanged location (same mode and
+    same place or coordinates as stored) reuses the stored resolution without
+    calling the geocoder. Raises APIError, never writes.
     """
+    stored = query_one(
+        "SELECT city, neighborhood, latitude, longitude, location_consent_gps "
+        "FROM profiles WHERE user_id = ?",
+        (user_id,),
+    )
     consent = _parse_consent(data.get("location_consent_gps"))
+    stored_consent = bool(stored and stored["location_consent_gps"])
     if consent:
         latitude = _parse_coordinate(data.get("latitude"), 90)
         longitude = _parse_coordinate(data.get("longitude"), 180)
@@ -194,14 +214,34 @@ def _resolve_location(data):
             raise APIError(
                 "Your GPS position is missing or invalid, please enter your city manually.", 400
             )
-        result = get_location_from_coords(latitude, longitude)
-        city, neighborhood = result["city"], result["neighbourhood"] or None
+        if (
+            stored_consent
+            and stored["city"]
+            and _same_coordinate(latitude, stored["latitude"])
+            and _same_coordinate(longitude, stored["longitude"])
+        ):
+            # Same fix as stored (within tolerance): keep the stored row as is.
+            city, neighborhood = stored["city"], stored["neighborhood"]
+            latitude, longitude = stored["latitude"], stored["longitude"]
+        else:
+            result = get_location_from_coords(latitude, longitude)
+            city, neighborhood = result["city"], result["neighbourhood"] or None
     else:
         city = (data.get("city") or "").strip()
         neighborhood = (data.get("neighborhood") or "").strip() or None
         if not city:
             raise APIError("Please enter your city.", 400)
-        latitude, longitude = geocode_city(city, neighborhood)
+        if (
+            stored
+            and not stored_consent
+            and stored["latitude"] is not None
+            and stored["longitude"] is not None
+            and _normalize_place(city) == _normalize_place(stored["city"])
+            and _normalize_place(neighborhood) == _normalize_place(stored["neighborhood"])
+        ):
+            latitude, longitude = stored["latitude"], stored["longitude"]
+        else:
+            latitude, longitude = geocode_city(city, neighborhood)
 
     return {
         "city": city,
@@ -223,7 +263,7 @@ def _update_profile(user_id: int, data):
 
     # Location is fully resolved (validation + geocoding) before any write so
     # that a geocoder failure aborts the whole update, leaving the row as is.
-    location = _resolve_location(data) if "location_consent_gps" in data else None
+    location = _resolve_location(user_id, data) if "location_consent_gps" in data else None
 
     # City, neighborhood and coordinates are written together (explicitly, not
     # COALESCE, so a cleared neighborhood does not keep a stale value) only

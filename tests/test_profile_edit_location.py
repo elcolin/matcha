@@ -156,6 +156,214 @@ class ProfileEditLocationTests(_ProfileEditTestCase):
         self.assertEqual(row["location_consent_gps"], before["location_consent_gps"])
 
 
+class ProfileEditUnchangedLocationTests(_ProfileEditTestCase):
+    """Resubmitting an unchanged location reuses the stored resolution instead
+    of calling the geocoder again (stored: Marseille / Le Panier, manual)."""
+
+    # Static statements only: no SQL is ever built from strings, even in tests.
+    _WHERE_ALICE = "WHERE user_id = (SELECT id FROM users WHERE username = 'alice')"
+    _SET_STORED_SQL = {
+        "city": "UPDATE profiles SET city = ? " + _WHERE_ALICE,
+        "neighborhood": "UPDATE profiles SET neighborhood = ? " + _WHERE_ALICE,
+        "latitude": "UPDATE profiles SET latitude = ? " + _WHERE_ALICE,
+        "longitude": "UPDATE profiles SET longitude = ? " + _WHERE_ALICE,
+        "location_consent_gps": "UPDATE profiles SET location_consent_gps = ? " + _WHERE_ALICE,
+    }
+
+    def _set_stored(self, **columns):
+        from app.db import execute
+
+        with self.app.app_context():
+            for name, value in columns.items():
+                execute(self._SET_STORED_SQL[name], (value,))
+
+    def _assert_saved(self, response):
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self._flashes(), [("success", "Profile updated.")])
+
+    def _location(self, row):
+        keys = ("city", "neighborhood", "latitude", "longitude", "location_consent_gps")
+        return {key: row[key] for key in keys}
+
+    # --- manual mode -----------------------------------------------------
+
+    @patch("app.profile.routes.geocode_city")
+    def test_manual_bio_only_change_skips_geocoder(self, mock_geocode):
+        token = self._login_and_get_token()
+        before = self._row()
+
+        response = self._post(token, city="Marseille", neighborhood="Le Panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_not_called()
+        after = self._row()
+        self.assertEqual(after["bio"], "New bio")
+        self.assertEqual(self._location(after), self._location(before))
+
+    @patch("app.profile.routes.geocode_city", side_effect=APIError("Service down.", 503))
+    def test_manual_unchanged_location_saves_even_if_geocoder_is_down(self, mock_geocode):
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Marseille", neighborhood="Le Panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_not_called()
+        self.assertEqual(self._row()["bio"], "New bio")
+
+    @patch("app.profile.routes.geocode_city")
+    def test_manual_comparison_ignores_case_and_surrounding_spaces(self, mock_geocode):
+        token = self._login_and_get_token()
+        before = self._row()
+
+        response = self._post(token, city="  marseille ", neighborhood=" le panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_not_called()
+        row = self._row()
+        # The user's own spelling is saved (trimmed); the coordinates are reused.
+        self.assertEqual((row["city"], row["neighborhood"]), ("marseille", "le panier"))
+        self.assertEqual(
+            (row["latitude"], row["longitude"]), (before["latitude"], before["longitude"])
+        )
+
+    @patch("app.profile.routes.geocode_city")
+    def test_manual_empty_neighborhood_matches_stored_null(self, mock_geocode):
+        self._set_stored(neighborhood=None)
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Marseille", neighborhood="   ")
+
+        self._assert_saved(response)
+        mock_geocode.assert_not_called()
+        self.assertIsNone(self._row()["neighborhood"])
+
+    @patch("app.profile.routes.geocode_city", return_value=(43.3, 5.4))
+    def test_manual_same_city_without_stored_coords_is_geocoded(self, mock_geocode):
+        self._set_stored(latitude=None, longitude=None)
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Marseille", neighborhood="Le Panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_called_once_with("Marseille", "Le Panier")
+        row = self._row()
+        self.assertEqual((row["latitude"], row["longitude"]), (43.3, 5.4))
+
+    @patch("app.profile.routes.geocode_city", return_value=(45.764, 4.8357))
+    def test_manual_changed_city_is_geocoded(self, mock_geocode):
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Lyon", neighborhood="Le Panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_called_once_with("Lyon", "Le Panier")
+        row = self._row()
+        self.assertEqual(row["city"], "Lyon")
+        self.assertEqual((row["latitude"], row["longitude"]), (45.764, 4.8357))
+
+    @patch("app.profile.routes.geocode_city", return_value=(43.29, 5.37))
+    def test_manual_changed_neighborhood_is_geocoded(self, mock_geocode):
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Marseille", neighborhood="")
+
+        self._assert_saved(response)
+        mock_geocode.assert_called_once_with("Marseille", None)
+        self.assertIsNone(self._row()["neighborhood"])
+
+    @patch("app.profile.routes.geocode_city", return_value=(43.29, 5.37))
+    def test_switch_from_gps_to_manual_with_same_city_is_geocoded(self, mock_geocode):
+        self._set_stored(location_consent_gps=1)
+        token = self._login_and_get_token()
+
+        response = self._post(token, city="Marseille", neighborhood="Le Panier")
+
+        self._assert_saved(response)
+        mock_geocode.assert_called_once_with("Marseille", "Le Panier")
+        row = self._row()
+        self.assertEqual(row["location_consent_gps"], 0)
+        self.assertEqual((row["latitude"], row["longitude"]), (43.29, 5.37))
+
+    # --- GPS mode --------------------------------------------------------
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_gps_unchanged_coords_skip_reverse_geocoding(self, mock_reverse):
+        self._set_stored(location_consent_gps=1)
+        token = self._login_and_get_token()
+        before = self._row()
+
+        response = self._post(
+            token, location_consent_gps="1", latitude="43.2965004", longitude="5.3698"
+        )
+
+        self._assert_saved(response)
+        mock_reverse.assert_not_called()
+        after = self._row()
+        self.assertEqual(after["bio"], "New bio")
+        self.assertEqual(self._location(after), self._location(before))
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_gps_unchanged_coords_save_even_if_reverse_would_fail(self, mock_reverse):
+        mock_reverse.side_effect = APIError("Service down.", 503)
+        self._set_stored(location_consent_gps=1)
+        token = self._login_and_get_token()
+
+        response = self._post(token, location_consent_gps="1", latitude="43.2965", longitude="5.3698")
+
+        self._assert_saved(response)
+        mock_reverse.assert_not_called()
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_gps_moved_coords_are_reverse_geocoded(self, mock_reverse):
+        mock_reverse.return_value = {"city": "Aubagne", "neighbourhood": None}
+        self._set_stored(location_consent_gps=1)
+        token = self._login_and_get_token()
+
+        response = self._post(token, location_consent_gps="1", latitude="43.2965", longitude="5.3700")
+
+        self._assert_saved(response)
+        mock_reverse.assert_called_once_with(43.2965, 5.37)
+        row = self._row()
+        self.assertEqual(row["city"], "Aubagne")
+        self.assertEqual(row["longitude"], 5.37)
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_switch_from_manual_to_gps_with_same_coords_is_reverse_geocoded(self, mock_reverse):
+        mock_reverse.return_value = {"city": "Marseille", "neighbourhood": "Le Panier"}
+        token = self._login_and_get_token()
+
+        response = self._post(token, location_consent_gps="1", latitude="43.2965", longitude="5.3698")
+
+        self._assert_saved(response)
+        mock_reverse.assert_called_once_with(43.2965, 5.3698)
+        self.assertEqual(self._row()["location_consent_gps"], 1)
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_gps_same_coords_without_stored_city_is_reverse_geocoded(self, mock_reverse):
+        mock_reverse.return_value = {"city": "Marseille", "neighbourhood": None}
+        self._set_stored(location_consent_gps=1, city=None)
+        token = self._login_and_get_token()
+
+        response = self._post(token, location_consent_gps="1", latitude="43.2965", longitude="5.3698")
+
+        self._assert_saved(response)
+        mock_reverse.assert_called_once_with(43.2965, 5.3698)
+        self.assertEqual(self._row()["city"], "Marseille")
+
+    @patch("app.profile.routes.get_location_from_coords")
+    def test_gps_invalid_coords_are_still_rejected_when_stored_is_gps(self, mock_reverse):
+        self._set_stored(location_consent_gps=1)
+        token = self._login_and_get_token()
+        before = self._row()
+
+        response = self._post(token, location_consent_gps="1", latitude="", longitude="")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual([c for c, _ in self._flashes()], ["error"])
+        self.assertEqual(self._row(), before)
+        mock_reverse.assert_not_called()
+
+
 class ProfileEditTemplateTests(_ProfileEditTestCase):
     """GET /profile/edit renders the accessible location error container and
     only requires the city among manual location fields."""
