@@ -71,7 +71,7 @@ class RequestEmailChangeTests(DBTestCase):
 
         token = UserUpdater.request_email_change(self.user_id, "New@Example.com", "secret", 86400)
 
-        mock_validate.assert_called_once_with("New@Example.com")
+        mock_validate.assert_called_once_with("New@Example.com", check_deliverability=False)
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")
 

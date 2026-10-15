@@ -8,7 +8,8 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/auth/routes.py` — verrouillage anti-bruteforce (`_is_locked_out`).
 - `app/auth/routes.py::request_password_reset` (`test_auth_reset.py`) — non-fuite d'existence de compte : le flux token/email s'exécute toujours pour un compte existant, et la réponse HTTP est indiscernable entre un compte existant et un compte inconnu.
 - Non-fuite d'existence de compte lors d'une panne d'envoi d'email (`test_auth_email_errors.py`, régression issue #61 sur `app/auth/routes.py::request_password_reset` et `send_verification_email`) — un échec `send_email` ne doit jamais se traduire par un statut HTTP différent entre un compte existant et un compte inconnu.
-- `app/match/routes.py` — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles` (sortie caractérisée, et nombre de requêtes SQL constant quel que soit le nombre de candidats, `test_match_routes.py`).
+- `app/match/routes.py` — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
+- `app/auth/routes.py::resend_verification_email` (`test_auth_resend_verification.py`, issue #9) — renvoi du lien de vérification pour un compte non vérifié : invalidation des liens non utilisés précédents, aucun envoi pour un compte vérifié ou inconnu, réponse indiscernable quel que soit l'état du compte.
 - `app/profile/data.py` — mise à jour email/prénom/nom (`UserUpdater`).
 - `app/profile/geolocation.py` — extraction ville/quartier depuis les coordonnées GPS, validation de ville (géocodeur mocké, aucun appel réseau).
 - `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
@@ -16,12 +17,13 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
 - Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
+- `app/auth/routes.py::register` (`test_registration.py`) — un utilisateur connecté est redirigé vers l'accueil en GET et en POST, sans création de compte ni envoi d'email ; un visiteur anonyme ou une session obsolète accède toujours au formulaire.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
 - `test_url_map.py` — URLs publiques des blueprints `profile`, `notifications` et `users` (préfixes `url_prefix`, règles de la `url_map`, racines `/users/`, `/profile/`, `/notifications/` non routées).
 
 `tests/helpers.py` fournit `DBTestCase`, une base commune qui pousse un contexte Flask adossé à une base SQLite temporaire (chargée depuis le vrai `app/schema.sql`), sans jamais toucher `instance/matcha.db`.
 
-Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`register`, `login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
+Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
 
 ## Exécution locale
 Depuis la racine du dépôt :
