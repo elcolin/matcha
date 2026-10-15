@@ -32,7 +32,7 @@ from app.utils import (
     update_popularity,
 )
 
-profile_bp = Blueprint("profile", __name__)
+profile_bp = Blueprint("profile", __name__, url_prefix="/profile")
 
 
 def _is_form_request():
@@ -149,7 +149,7 @@ def _pending_email_change(user_id: int):
     )
 
 
-@profile_bp.route("/profile/edit", methods=["GET"])
+@profile_bp.route("/edit", methods=["GET"])
 @login_required
 def edit_profile():
     profile = _profile_payload(g.current_user["id"], include_email=True, include_coordinates=True)
@@ -301,7 +301,7 @@ def _request_email_change_and_notify(user_id: int, new_email):
     )
 
 
-@profile_bp.route("/profile/edit", methods=["POST"])
+@profile_bp.route("/edit", methods=["POST"])
 @login_required
 def edit_profile_submit():
     user_id = g.current_user["id"]
@@ -334,7 +334,7 @@ def _save_uploaded_photo(file_storage):
     return f"/static/uploads/{unique_name}"
 
 
-@profile_bp.route("/profile/edit/photos", methods=["POST", "DELETE"])
+@profile_bp.route("/edit/photos", methods=["POST", "DELETE"])
 @login_required
 def profile_photos():
     user_id = g.current_user["id"]
@@ -405,7 +405,7 @@ def profile_photos():
     return jsonify(_profile_payload(user_id)["photos"])
 
 
-@profile_bp.route("/profile/edit/photos/delete", methods=["POST"])
+@profile_bp.route("/edit/photos/delete", methods=["POST"])
 @login_required
 def profile_photos_delete_form():
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
@@ -421,7 +421,7 @@ def profile_photos_delete_form():
     return redirect(url_for("profile.edit_profile"))
 
 
-@profile_bp.route("/profile/<int:id>", methods=["GET"])
+@profile_bp.route("/<int:id>", methods=["GET"])
 @login_required
 def detail(id):
     profile = _profile_payload(id)
@@ -499,7 +499,7 @@ def detail(id):
     return render_template("profile.html", profile=profile)
 
 
-@profile_bp.route("/profile/<int:id>/like", methods=["POST", "DELETE"])
+@profile_bp.route("/<int:id>/like", methods=["POST", "DELETE"])
 @login_required
 def like_profile(id):
     current = g.current_user["id"]
@@ -565,7 +565,7 @@ def like_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/unlike", methods=["POST"])
+@profile_bp.route("/<int:id>/unlike", methods=["POST"])
 @login_required
 def unlike_profile_form(id):
     """Plain-HTML-form-friendly wrapper: browsers can't send DELETE from a <form>."""
@@ -582,7 +582,7 @@ def unlike_profile_form(id):
     return redirect(url_for("profile.detail", id=id))
 
 
-@profile_bp.route("/profile/<int:id>/unblock", methods=["POST"])
+@profile_bp.route("/<int:id>/unblock", methods=["POST"])
 @login_required
 def unblock_profile(id):
     current = g.current_user["id"]
@@ -607,7 +607,7 @@ def unblock_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/block", methods=["POST", "DELETE"])
+@profile_bp.route("/<int:id>/block", methods=["POST", "DELETE"])
 @login_required
 def block_profile(id):
     current = g.current_user["id"]
@@ -655,7 +655,7 @@ def block_profile(id):
     )
 
 
-@profile_bp.route("/profile/<int:id>/report", methods=["POST"])
+@profile_bp.route("/<int:id>/report", methods=["POST"])
 @login_required
 def report_profile(id):
     current = g.current_user["id"]
