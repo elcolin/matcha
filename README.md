@@ -9,6 +9,7 @@ Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscriptio
 - Templates : Jinja2 (`app/templates/`), CSS custom, JS vanilla minimal.
 - Auth : sessions Flask, tokens signés `itsdangerous`, protection CSRF sur toutes les requêtes POST/PUT/PATCH/DELETE.
 - Temps réel : polling léger (chat 5s, notifications SSE), statut online/offline avec pastille visuelle et polling 5s.
+- Géolocalisation : `geopy` avec le géocodeur Nominatim (OpenStreetMap, timeout 10 s) pour résoudre la ville depuis les coordonnées GPS ou la saisie manuelle. Nécessite un accès réseau ; en cas d'indisponibilité, la mise à jour du profil est refusée proprement (503). Distance entre profils : formule de haversine (sans API externe).
 
 Détails complets dans [`CLAUDE.md`](./CLAUDE.md).
 
