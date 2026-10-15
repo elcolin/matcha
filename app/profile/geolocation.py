@@ -11,7 +11,7 @@ geolocator = Nominatim(user_agent="matcha-app")  # required: unique app identifi
 def get_location_from_coords(lat, lon):
     location = geolocator.reverse((lat, lon), exactly_one=True)
     if location is None:
-        return None
+        raise APIError("GPS localisation failed, please enter manually.")
 
     address = location.raw.get("address", {})
     if address is None:

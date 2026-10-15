@@ -1,0 +1,4 @@
+# Dev-only tooling (scripts/), never imported by the Flask app or the tests.
+-r requirements.txt
+Faker==40.38.0
+transformers[torch]==5.16.1

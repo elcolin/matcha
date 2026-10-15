@@ -48,13 +48,13 @@ def _bucket_rank(item):
 
 
 def candidate_profiles(viewer_id: int):
-    viewer = _profile_payload(viewer_id)
+    viewer = _profile_payload(viewer_id, include_coordinates=True)
     if not viewer:
         return []
 
     candidates = []
     for row in query_all("SELECT id FROM users WHERE id != ?", (viewer_id,)):
-        candidate = _profile_payload(row["id"])
+        candidate = _profile_payload(row["id"], include_coordinates=True)
         if not candidate:
             continue
         if is_blocked_between(viewer_id, candidate["id"]):
@@ -83,6 +83,9 @@ def candidate_profiles(viewer_id: int):
         candidate["distance_km"] = distance_km
         candidate["same_city"] = same_city
         candidate["same_neighborhood"] = same_neighborhood
+        # Coordinates were only needed for the distance: never expose them.
+        candidate.pop("latitude")
+        candidate.pop("longitude")
         candidates.append(candidate)
 
     candidates.sort(key=_bucket_rank)

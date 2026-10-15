@@ -4,15 +4,15 @@ from app.db import query_one
 from app.profile.routes import _compute_online
 from app.utils import APIError, is_blocked_between, is_match, login_required
 
-users_bp = Blueprint("users", __name__)
+users_bp = Blueprint("users", __name__, url_prefix="/users")
 
 
-@users_bp.route("/users")
+@users_bp.route("")
 def list_users_placeholder():
     return jsonify({"message": "Use /match and /profile APIs for user discovery"})
 
 
-@users_bp.route("/users/<int:id>/online-status", methods=["GET"])
+@users_bp.route("/<int:id>/online-status", methods=["GET"])
 @login_required
 def online_status(id):
     row = query_one(

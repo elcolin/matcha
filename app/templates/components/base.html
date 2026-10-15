@@ -31,12 +31,9 @@
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item"><a class="nav-link" href="{{ url_for("main.home") }}">Home</a></li>
                         {% if current_user %}
-                            {#
-                  Browse/Search/Chat/Notifications pages don't have routes yet
-                  on this branch. Wire these up once match.browse_view,
-                  match.search_view, chat.chat_view and a notifications page
-                  exist (see app/match/routes.py, app/chat/routes.py).
-                #}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('search.search_view') }}">Search</a>
+                            </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('notifications.notifications_view') }}">
                         Notifications
