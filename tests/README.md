@@ -17,12 +17,13 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
 - Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
+- `app/auth/routes.py::register` (`test_registration.py`) — un utilisateur connecté est redirigé vers l'accueil en GET et en POST, sans création de compte ni envoi d'email ; un visiteur anonyme ou une session obsolète accède toujours au formulaire.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
 - `test_url_map.py` — URLs publiques des blueprints `profile`, `notifications` et `users` (préfixes `url_prefix`, règles de la `url_map`, racines `/users/`, `/profile/`, `/notifications/` non routées).
 
 `tests/helpers.py` fournit `DBTestCase`, une base commune qui pousse un contexte Flask adossé à une base SQLite temporaire (chargée depuis le vrai `app/schema.sql`), sans jamais toucher `instance/matcha.db`.
 
-Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`register`, `login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
+Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
 
 ## Exécution locale
 Depuis la racine du dépôt :
