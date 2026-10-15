@@ -8,6 +8,7 @@
                 <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
                 {{ 'Online' if profile.online else 'Offline' }}
             </p>
+            <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
             <a href="{{ url_for('profile.detail', id=profile.id) }}"
                class="btn btn-outline-danger btn-sm">View</a>
         </div>

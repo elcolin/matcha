@@ -266,8 +266,8 @@ class CandidateProfilesCharacterizationTests(DBTestCase):
 
         base = {
             "first_name": "First", "last_name": "Last", "sexual_preference": "everyone",
-            "bio": "", "city": None, "neighborhood": None, "latitude": None,
-            "longitude": None, "location_consent_gps": False, "popularity_score": 0,
+            "bio": "", "city": None, "neighborhood": None,
+            "location_consent_gps": False, "popularity_score": 0,
             "age": None, "online": False, "last_seen_at": None, "tags": [], "photos": [],
             "shared_tags_count": 0, "distance_km": 99999.0, "same_city": False,
             "same_neighborhood": False,
@@ -283,7 +283,7 @@ class CandidateProfilesCharacterizationTests(DBTestCase):
              "shared_tags_count": 1, "same_city": True},
             {**base, "id": same_hood, "username": "samehood", "gender": "male",
              "sexual_preference": "women", "bio": "hello", "city": "Lyon",
-             "neighborhood": " marais", "latitude": 49.0, "longitude": 3.0,
+             "neighborhood": " marais",
              "location_consent_gps": True, "popularity_score": 42, "age": 30,
              "online": True, "last_seen_at": "2026-01-01T00:00:00+00:00",
              "tags": ["coffee", "travel"], "shared_tags_count": 2,

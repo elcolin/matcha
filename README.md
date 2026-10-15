@@ -1,6 +1,6 @@
 # Matcha
 
-Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscription, complétion du profil, recherche/suggestions, consultation de profil, like/match, chat et notifications en temps réel.
+Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscription, complétion du profil, recherche/suggestions, consultation de profil, like/match, blocage et signalement de faux comptes, chat et notifications en temps réel.
 
 ## Stack
 
@@ -18,6 +18,12 @@ Détails complets dans [`CLAUDE.md`](./CLAUDE.md).
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+Les outils de `scripts/` (génération de profils `Faker`, bios via `transformers`/`torch`) ont leurs propres dépendances, plus lourdes, non requises par l'app ni par les tests :
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 Créer un fichier `.env` à la racine (jamais commité) avec au minimum :

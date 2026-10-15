@@ -112,7 +112,7 @@ def _load_candidate_data(viewer_id: int):
 
 
 def candidate_profiles(viewer_id: int):
-    viewer = _profile_payload(viewer_id)
+    viewer = _profile_payload(viewer_id, include_coordinates=True)
     if not viewer:
         return []
 
