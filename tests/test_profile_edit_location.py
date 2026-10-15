@@ -378,6 +378,47 @@ class ProfileEditTemplateTests(_ProfileEditTestCase):
         neighborhood = re.search(r"<input[^>]*id=\"neighborhood\"[^>]*>", html).group(0)
         self.assertNotIn("required", neighborhood)
 
+    def _hidden_coord_values(self):
+        self._login_and_get_token()
+        html = self.client.get("/profile/edit").get_data(as_text=True)
+        values = []
+        for name in ("latitude", "longitude"):
+            tag = re.search(rf"<input[^>]*id=\"{name}\"[^>]*>", html).group(0)
+            values.append(re.search(r'value="([^"]*)"', tag).group(1))
+        return values
+
+    def test_zero_coordinates_are_rendered_not_blanked(self):
+        from app.db import execute
+
+        with self.app.app_context():
+            execute("UPDATE profiles SET latitude = 0.0, longitude = 0.0")
+
+        self.assertEqual(self._hidden_coord_values(), ["0.0", "0.0"])
+
+    def test_missing_coordinates_render_empty_values(self):
+        from app.db import execute
+
+        with self.app.app_context():
+            execute("UPDATE profiles SET latitude = NULL, longitude = NULL")
+
+        self.assertEqual(self._hidden_coord_values(), ["", ""])
+
+    def test_script_requests_position_on_load_when_consented_without_coords(self):
+        self._login_and_get_token()
+        html = self.client.get("/profile/edit").get_data(as_text=True)
+
+        self.assertRegex(
+            html,
+            r"if \(consentBox\.checked && \(latInput\.value === '' \|\| "
+            r"lonInput\.value === ''\)\) \{\s*requestPosition\(\);",
+        )
+
+    def test_unused_manual_location_fields_id_is_removed(self):
+        self._login_and_get_token()
+        html = self.client.get("/profile/edit").get_data(as_text=True)
+
+        self.assertNotIn('id="manual-location-fields"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

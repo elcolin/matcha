@@ -85,10 +85,10 @@
 
                         <div id="location-error" class="alert alert-warning py-2" role="alert" hidden></div>
 
-                        <input type="hidden" id="latitude" name="latitude" value="{{ profile.latitude or '' }}">
-                        <input type="hidden" id="longitude" name="longitude" value="{{ profile.longitude or '' }}">
+                        <input type="hidden" id="latitude" name="latitude" value="{{ '' if profile.latitude is none else profile.latitude }}">
+                        <input type="hidden" id="longitude" name="longitude" value="{{ '' if profile.longitude is none else profile.longitude }}">
 
-                        <div id="manual-location-fields" class="row g-3">
+                        <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="city">City</label>
                                 <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}">
@@ -153,8 +153,9 @@
 
 {% block extra_scripts %}
 <script>
-  // Location: the browser is only asked for the GPS position when the user
-  // ticks the consent box (never on page load). If the position cannot be
+  // Location: the browser is asked for the GPS position when the user ticks
+  // the consent box, or on page load only if consent is already given but no
+  // coordinates are stored (otherwise saving would fail). If the position cannot be
   // obtained, we fall back to the manual city field with an accessible
   // message. Submitting is blocked while a GPS fix is still pending.
   (function () {
@@ -243,6 +244,9 @@
     });
 
     syncRequired();
+    if (consentBox.checked && (latInput.value === '' || lonInput.value === '')) {
+      requestPosition();
+    }
   })();
 </script>
 {% endblock %}
