@@ -86,6 +86,7 @@ def candidate_profiles(viewer_id: int):
         # Coordinates were only needed for the distance: never expose them.
         candidate.pop("latitude")
         candidate.pop("longitude")
+        candidate["photos"] = sorted(candidate.get("photos") or [], key=lambda p: not p.get("is_profile_photo"))
         candidates.append(candidate)
 
     candidates.sort(key=_bucket_rank)

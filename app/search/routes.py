@@ -1,6 +1,6 @@
 from flask import Blueprint, g, render_template, request
 
-from app.match.routes import MISSING_DISTANCE_KM, candidate_profiles
+from app.match.routes import candidate_profiles
 from app.utils import login_required
 
 search_bp = Blueprint("search", __name__)
@@ -53,7 +53,4 @@ def search_view():
     if searched:
         profiles = candidate_profiles(g.current_user["id"])
         profiles = _sort(_filter(profiles, request.args), request.args)[:50]
-        for p in profiles:  # hide the placeholder distance for users without GPS
-            if p["distance_km"] >= MISSING_DISTANCE_KM:
-                p["distance_km"] = None
     return render_template("search.html", profiles=profiles, searched=searched, args=request.args)

@@ -1,16 +1,43 @@
 <div class="col-md-4">
     <div class="card profile-card shadow-sm">
-        <img src="{{ profile.image }}" class="card-img-top">
+        <img src="{{ profile.photos[0].url if profile.photos else 'https://placehold.co/600x400?text=Matcha' }}"
+             class="card-img-top"
+             alt="{{ profile.first_name or profile.username }}'s profile">
+
         <div class="card-body text-center">
-            <h5>{{ profile.name }}, {{ profile.age }}</h5>
-            <p class="text-muted">{{ profile.city }} • {{ profile.neighborhood }}</p>
+            <h5>{{ profile.first_name or profile.username }}, {{ profile.age }}</h5>
+
+            <p class="text-muted mb-1">
+                {{ profile.city or 'Unknown' }}{% if profile.neighborhood %} • {{ profile.neighborhood }}{% endif %}
+            </p>
+
+            <p class="mb-2">
+                {% if profile.distance_km is not none and profile.distance_km < 99999 %}
+                    <span class="badge bg-secondary">
+                        {% if profile.distance_km < 1 %}less than 1 km{% else %}{{ "%.0f"|format(profile.distance_km) }} km{% endif %}
+                    </span>
+                {% endif %}
+
+                {% if profile.shared_tags_count %}
+                    <span class="badge bg-info text-dark">
+                        {{ profile.shared_tags_count }} shared tags
+                    </span>
+                {% endif %}
+
+                <span class="badge bg-warning text-dark">
+                    {{ profile.popularity_score }} pts
+                </span>
+            </p>
+
             <p class="online-status">
                 <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
                 {{ 'Online' if profile.online else 'Offline' }}
             </p>
-            <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
-            <a href="{{ url_for('profile.detail', id=profile.id) }}"
-               class="btn btn-outline-danger btn-sm">View</a>
+
+            <div class="mt-2 text-center">
+                <a href="{{ url_for('profile.detail', id=profile.id) }}"
+                   class="btn btn-outline-danger btn-sm">View</a>
+            </div>
         </div>
     </div>
 </div>
