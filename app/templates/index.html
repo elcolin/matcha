@@ -7,7 +7,11 @@
             <h1>Welcome to Matcha Flock 🐦</h1>
             <p>The only dating app where swiping right means… winging it right.</p>
             <!-- <a class="btn btn-warning"> -->
-            <a href="/register" class="btn btn-light cta-btn fw-semibold mt-3">Find Your Feathered Match</a>
+            {% if current_user %}
+                <a href="{{ url_for('search.search_view') }}" class="btn btn-light cta-btn fw-semibold mt-3">Search profiles</a>
+            {% else %}
+                <a href="{{ url_for('auth.register') }}" class="btn btn-light cta-btn fw-semibold mt-3">Find Your Feathered Match</a>
+            {% endif %}
             <!-- <p class="lead mt-3">
             Meet new people, connect instantly, and build real relationships.
         </p>

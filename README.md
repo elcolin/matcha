@@ -1,6 +1,6 @@
 # Matcha
 
-Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscription, complétion du profil, recherche/suggestions, consultation de profil, like/match, chat et notifications en temps réel.
+Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscription, complétion du profil, recherche/suggestions, consultation de profil, like/match, blocage et signalement de faux comptes, chat et notifications en temps réel.
 
 ## Stack
 

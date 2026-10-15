@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from app.config import Config
 
 
-def _fake_validate_email(email):
+def _fake_validate_email(email, **kwargs):
     """Stand-in for email_validator.validate_email that skips the real DNS
     deliverability check (unavailable/flaky in tests) but mirrors the
     normalization (lowercasing) behavior request_email_change relies on."""
