@@ -1,10 +1,11 @@
+import math
 import secrets
 import os
 from datetime import datetime, timezone
 
 from app.config import UserConfig
 from .data import UserUpdater
-from .geolocation import get_location_from_coords, check_if_city_valid
+from .geolocation import get_location_from_coords, geocode_city
 
 from flask import (
     Blueprint,
@@ -158,6 +159,59 @@ def edit_profile():
         "profile_edit.html", profile=profile, pending_email_change=pending_email_change
     )
 
+LOCATION_FORM_KEYS = ("city", "neighborhood", "latitude", "longitude")
+
+
+def _parse_coordinate(value, limit):
+    """Return `value` as a finite float within [-limit, limit], else None."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or not -limit <= number <= limit:
+        return None
+    return number
+
+
+def _parse_consent(value):
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "on", "yes")
+    return bool(value)
+
+
+def _resolve_location(data):
+    """Validate the submitted location and resolve it through the geocoder.
+
+    GPS consent: reverse-geocode the submitted coordinates to a city.
+    Manual mode: city is required, coordinates come from forward geocoding
+    (any submitted lat/lon is ignored). Raises APIError, never writes.
+    """
+    consent = _parse_consent(data.get("location_consent_gps"))
+    if consent:
+        latitude = _parse_coordinate(data.get("latitude"), 90)
+        longitude = _parse_coordinate(data.get("longitude"), 180)
+        if latitude is None or longitude is None:
+            raise APIError(
+                "Your GPS position is missing or invalid, please enter your city manually.", 400
+            )
+        result = get_location_from_coords(latitude, longitude)
+        city, neighborhood = result["city"], result["neighbourhood"] or None
+    else:
+        city = (data.get("city") or "").strip()
+        neighborhood = (data.get("neighborhood") or "").strip() or None
+        if not city:
+            raise APIError("Please enter your city.", 400)
+        latitude, longitude = geocode_city(city, neighborhood)
+
+    return {
+        "city": city,
+        "neighborhood": neighborhood,
+        "latitude": latitude,
+        "longitude": longitude,
+        "consent": int(consent),
+    }
+
+
 def _update_profile(user_id: int, data):
     """Shared update logic used by the plain HTML form on /profile/edit."""
     gender = data.get("gender") or None
@@ -167,46 +221,27 @@ def _update_profile(user_id: int, data):
     if pref is not None and pref not in UserConfig.SEXUAL_PREFERENCES:
         raise APIError("Invalid sexual_preference", 400)
 
-    consent = data.get("location_consent_gps")
-    if consent is not None and consent != "":
-        consent = (
-            bool(consent)
-            if not isinstance(consent, str)
-            else consent.lower() in ("1", "true", "on", "yes")
-        )
-    else:
-        consent = None
+    # Location is fully resolved (validation + geocoding) before any write so
+    # that a geocoder failure aborts the whole update, leaving the row as is.
+    location = _resolve_location(data) if "location_consent_gps" in data else None
 
-    latitude = data.get("latitude") or None
-    longitude = data.get("longitude") or None
-    neighborhood = data.get("neighborhood") or None
-    city = data.get("city") or None
-
-    try :
-        if consent:
-            result = get_location_from_coords(latitude, longitude)
-            neighborhood = result["neighbourhood"]
-            city = result["city"]
-        else:
-            check_if_city_valid(city)
-    except APIError as e:
-        neighborhood =  None
-        city =  None
-        flash(e.message, "error")
-
-
+    # City, neighborhood and coordinates are written together (explicitly, not
+    # COALESCE, so a cleared neighborhood does not keep a stale value) only
+    # when the location was submitted; otherwise the stored ones are kept.
+    has_location = location is not None
+    location = location or {}
     execute(
         """
         UPDATE profiles
         SET gender = COALESCE(?, gender),
             sexual_preference = COALESCE(?, sexual_preference),
             bio = COALESCE(?, bio),
-            city = COALESCE(?, city),
-            neighborhood = COALESCE(?, neighborhood),
-            latitude = COALESCE(?, latitude),
-            longitude = COALESCE(?, longitude),
-            location_consent_gps = COALESCE(?, location_consent_gps),
             age = COALESCE(?, age),
+            city = CASE WHEN ? THEN ? ELSE city END,
+            neighborhood = CASE WHEN ? THEN ? ELSE neighborhood END,
+            latitude = CASE WHEN ? THEN ? ELSE latitude END,
+            longitude = CASE WHEN ? THEN ? ELSE longitude END,
+            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
         """,
@@ -214,12 +249,12 @@ def _update_profile(user_id: int, data):
             gender,
             pref,
             data.get("bio"),
-            city,
-            neighborhood,
-            latitude,
-            longitude,
-            int(consent) if consent is not None else None,
             data.get("age") or None,
+            has_location, location.get("city"),
+            has_location, location.get("neighborhood"),
+            has_location, location.get("latitude"),
+            has_location, location.get("longitude"),
+            has_location, location.get("consent"),
             user_id,
         ),
     )
@@ -307,7 +342,11 @@ def edit_profile_submit():
     user_id = g.current_user["id"]
     try:
         form_data = request.form.to_dict(flat=True)
-        form_data.setdefault("location_consent_gps", "0")
+        # An unchecked checkbox is not submitted: treat it as "manual mode",
+        # but only when the location part of the form was actually posted so
+        # partial submissions (e.g. name/email only) leave location untouched.
+        if any(key in form_data for key in LOCATION_FORM_KEYS):
+            form_data.setdefault("location_consent_gps", "0")
         _update_profile(user_id, form_data)
         _request_email_change_and_notify(user_id, form_data.get("email") or None)
     except APIError as err:
