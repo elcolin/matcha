@@ -303,9 +303,9 @@ def _request_email_change_and_notify(user_id: int, new_email):
     (see app.auth.routes.confirm_email_change). No-op if `new_email` is
     empty.
 
-    Always flashes the same generic message regardless of whether the
-    change actually resulted in a token being issued (matches current
-    active email, or already used by another account): the observable
+    Flashes the same generic message whether or not a token was issued
+    (e.g. address already used by another account, or SMTP failure); only
+    a (case variant of the) current address is silently ignored. The observable
     response must never reveal whether an email address is already
     registered (enumeration - see fix/password-reset-enumeration for the
     same pattern applied to the password reset flow).
@@ -320,30 +320,34 @@ def _request_email_change_and_notify(user_id: int, new_email):
         current_app.config["EMAIL_CHANGE_TOKEN_TTL_SECONDS"],
     )
 
-    if token:
-        pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
-        confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
-        try:
-            send_email(
-                pending["new_email"],
-                "Confirm your new Matcha email address",
-                f"""
-                <h1>Confirm your new email address</h1>
-                <p>You asked to change the email address linked to your Matcha account.</p>
-                <p><a href="{confirm_link}">Confirm this change</a></p>
-                <p>If you did not request this, ignore this email: your current address stays active.</p>
-                """,
-            )
-            flash(
-                    "If this address is valid, a confirmation email has been sent.",
-                    "success",
-                )
-        except Exception:
-            # Never let an SMTP failure surface as a 500, and never log the
-            # raw email address (see CLAUDE.md: no secret/PII in logs).
-            current_app.logger.exception(
-                "Failed to send email change confirmation to user %s", user_id
-            )
+    if not token:
+        # Unchanged address: nothing to announce. Any other no-op (address
+        # taken by another account) must look exactly like a success.
+        if not UserUpdater.is_current_email(user_id, new_email):
+            flash("If this address is valid, a confirmation email has been sent.", "success")
+        return
+
+    pending = query_one("SELECT new_email FROM email_changes WHERE token = ?", (token,))
+    confirm_link = url_for("auth.confirm_email_change", token=token, _external=True)
+    try:
+        send_email(
+            pending["new_email"],
+            "Confirm your new Matcha email address",
+            f"""
+            <h1>Confirm your new email address</h1>
+            <p>You asked to change the email address linked to your Matcha account.</p>
+            <p><a href="{confirm_link}">Confirm this change</a></p>
+            <p>If you did not request this, ignore this email: your current address stays active.</p>
+            """,
+        )
+    except Exception:
+        # Never let an SMTP failure surface as a 500, and never log the
+        # raw email address (see CLAUDE.md: no secret/PII in logs).
+        current_app.logger.exception(
+            "Failed to send email change confirmation to user %s", user_id
+        )
+    flash("If this address is valid, a confirmation email has been sent.", "success")
+
 
 @profile_bp.route("/edit", methods=["POST"])
 @login_required

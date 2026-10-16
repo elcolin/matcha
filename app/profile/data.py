@@ -1,12 +1,23 @@
 from datetime import datetime, timedelta, timezone
 
 from app.db import execute, query_all, query_one
-from email_validator import validate_email, EmailNotValidError
+from email_validator import EmailNotValidError
 from app.security import issue_signed_token, utcnow_iso
-from app.utils import (
-    APIError)
+from app.utils import APIError, normalize_email
 
 class UserUpdater():
+    def is_current_email(user_id, email):
+        """True if `email` is a (case) variant of the user's active address.
+        An invalid address is never the current one."""
+        try:
+            return UserUpdater._is_current_canonical(user_id, normalize_email(email))
+        except EmailNotValidError:
+            return False
+
+    def _is_current_canonical(user_id, canonical_email):
+        current = query_one("SELECT email FROM users WHERE id = ?", (user_id,))
+        return bool(current) and current["email"] == canonical_email
+
     def request_email_change(user_id, new_email, secret_key, ttl_seconds):
         """Start an email change: the active email is left untouched until the
         confirmation link sent to `new_email` is clicked (see
@@ -17,13 +28,11 @@ class UserUpdater():
             return None
 
         try:
-            valid = validate_email(new_email, check_deliverability=False)
-            new_email = valid.normalized  # cleaned-up version
+            new_email = normalize_email(new_email)
         except EmailNotValidError as e:
             raise APIError(str(e))
 
-        current = query_one("SELECT email FROM users WHERE id = ?", (user_id,))
-        if current and current["email"] == new_email:
+        if UserUpdater._is_current_canonical(user_id, new_email):
             return None
 
         taken = query_one(

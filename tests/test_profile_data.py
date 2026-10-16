@@ -6,7 +6,7 @@ from email_validator import EmailNotValidError
 from app.db import query_all, query_one
 from app.profile.data import UserUpdater
 from app.utils import APIError
-from tests.helpers import DBTestCase
+from tests.helpers import DBTestCase, fake_validate_email
 
 
 class RequestEmailChangeTests(DBTestCase):
@@ -27,17 +27,15 @@ class RequestEmailChangeTests(DBTestCase):
         self.assertEqual(row["email"], "old@example.com")
         self.assertEqual(self._pending_rows(), [])
 
-    @patch("app.profile.data.validate_email")
+    @patch("app.utils.validate_email", side_effect=fake_validate_email)
     def test_same_as_active_email_is_a_no_op(self, mock_validate):
-        mock_validate.return_value.normalized = "old@example.com"
-
         UserUpdater.request_email_change(self.user_id, "Old@Example.com", "secret", 86400)
 
         row = query_one("SELECT email FROM users WHERE id = ?", (self.user_id,))
         self.assertEqual(row["email"], "old@example.com")
         self.assertEqual(self._pending_rows(), [])
 
-    @patch("app.profile.data.validate_email")
+    @patch("app.utils.validate_email", side_effect=fake_validate_email)
     def test_invalid_email_raises_api_error_and_does_not_change_anything(self, mock_validate):
         mock_validate.side_effect = EmailNotValidError("bad email")
 
@@ -48,13 +46,12 @@ class RequestEmailChangeTests(DBTestCase):
         self.assertEqual(row["email"], "old@example.com")
         self.assertEqual(self._pending_rows(), [])
 
-    @patch("app.profile.data.validate_email")
+    @patch("app.utils.validate_email", side_effect=fake_validate_email)
     def test_email_already_used_by_another_account_is_a_silent_no_op(self, mock_validate):
         """Must not raise: the caller shows the same generic message whether
         the email is taken or available, to avoid leaking which emails are
         registered (see CLAUDE.md / fix/password-reset-enumeration)."""
         self.create_user(email="taken@example.com", username="otheruser")
-        mock_validate.return_value.normalized = "taken@example.com"
 
         token = UserUpdater.request_email_change(
             self.user_id, "Taken@Example.com", "secret", 86400
@@ -65,10 +62,8 @@ class RequestEmailChangeTests(DBTestCase):
         self.assertEqual(row["email"], "old@example.com")
         self.assertEqual(self._pending_rows(), [])
 
-    @patch("app.profile.data.validate_email")
+    @patch("app.utils.validate_email", side_effect=fake_validate_email)
     def test_valid_distinct_email_creates_pending_request_without_touching_active_email(self, mock_validate):
-        mock_validate.return_value.normalized = "new@example.com"
-
         token = UserUpdater.request_email_change(self.user_id, "New@Example.com", "secret", 86400)
 
         mock_validate.assert_called_once_with("New@Example.com", check_deliverability=False)
@@ -81,12 +76,10 @@ class RequestEmailChangeTests(DBTestCase):
         self.assertEqual(pending[0]["token"], token)
         self.assertIsNone(pending[0]["used_at"])
 
-    @patch("app.profile.data.validate_email")
+    @patch("app.utils.validate_email", side_effect=fake_validate_email)
     def test_second_request_invalidates_previous_pending_one(self, mock_validate):
-        mock_validate.return_value.normalized = "first@example.com"
         UserUpdater.request_email_change(self.user_id, "First@Example.com", "secret", 86400)
 
-        mock_validate.return_value.normalized = "second@example.com"
         UserUpdater.request_email_change(self.user_id, "Second@Example.com", "secret", 86400)
 
         pending = self._pending_rows()
