@@ -65,6 +65,19 @@ class PasswordResetRequestTests(unittest.TestCase):
         self.assertEqual(mock_send_email.call_args[0][0], "known@example.com")
 
     @patch("app.auth.routes.send_email")
+    @patch("app.auth.routes.issue_signed_token", return_value="fake-token")
+    def test_any_casing_of_existing_email_finds_the_account(self, mock_issue_token, mock_send_email):
+        response = self.client.post(
+            "/password-reset/request",
+            data={"email": "Known@Example.com", "csrf_token": self._get_csrf_token()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_issue_token.assert_called_once()
+        mock_send_email.assert_called_once()
+        self.assertEqual(mock_send_email.call_args[0][0], "known@example.com")
+
+    @patch("app.auth.routes.send_email")
     @patch("app.auth.routes.issue_signed_token")
     def test_unknown_account_does_not_trigger_token_or_email(self, mock_issue_token, mock_send_email):
         response = self.client.post(

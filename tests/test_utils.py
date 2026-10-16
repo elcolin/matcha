@@ -1,5 +1,7 @@
+import sqlite3
 import unittest
 
+from email_validator import EmailNotValidError
 from flask import g
 
 from app.db import execute, query_one
@@ -9,9 +11,27 @@ from app.utils import (
     is_blocked_between,
     is_match,
     login_required,
+    normalize_email,
     update_popularity,
 )
 from tests.helpers import DBTestCase
+
+
+
+class NormalizeEmailTests(unittest.TestCase):
+    def test_lowercases_local_part_and_domain(self):
+        self.assertEqual(normalize_email("Taken@Example.COM"), "taken@example.com")
+
+    def test_invalid_address_raises(self):
+        with self.assertRaises(EmailNotValidError):
+            normalize_email("not-an-email")
+
+
+class EmailUniquenessSchemaTests(DBTestCase):
+    def test_case_variant_of_existing_email_violates_unique_constraint(self):
+        self.create_user(email="a@x.com", username="first")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.create_user(email="A@x.com", username="second")
 
 
 class UpdatePopularityTests(DBTestCase):

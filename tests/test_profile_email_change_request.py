@@ -2,18 +2,10 @@ import os
 import re
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.config import Config
-
-
-def _fake_validate_email(email, **kwargs):
-    """Stand-in for email_validator.validate_email that skips the real DNS
-    deliverability check (unavailable/flaky in tests) but mirrors the
-    normalization (lowercasing) behavior request_email_change relies on."""
-    result = MagicMock()
-    result.normalized = email.lower()
-    return result
+from tests.helpers import fake_validate_email as _fake_validate_email
 
 
 class ProfileEmailChangeRequestTests(unittest.TestCase):
@@ -74,7 +66,7 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
             },
         )
 
-    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
     @patch("app.profile.routes.send_email")
     def test_new_email_is_not_applied_immediately_and_sends_confirmation_to_new_address(
         self, mock_send_email, mock_validate
@@ -100,7 +92,7 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
         mock_send_email.assert_called_once()
         self.assertEqual(mock_send_email.call_args[0][0], "new@example.com")
 
-    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
     @patch("app.profile.routes.send_email")
     def test_same_email_as_active_is_a_silent_no_op(self, mock_send_email, mock_validate):
         token = self._login_and_get_token()
@@ -118,7 +110,7 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
             )
         self.assertIsNone(pending)
 
-    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
     @patch("app.profile.routes.send_email", side_effect=RuntimeError("SMTP misconfigured"))
     def test_smtp_failure_is_swallowed_and_does_not_return_500(self, mock_send_email, mock_validate):
         token = self._login_and_get_token()
@@ -133,7 +125,7 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
         joined_logs = "\n".join(logs.output)
         self.assertNotIn("new@example.com", joined_logs)
 
-    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
     @patch("app.profile.routes.send_email")
     def test_second_request_before_confirmation_supersedes_the_first(self, mock_send_email, mock_validate):
         token = self._login_and_get_token()
@@ -155,7 +147,7 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
         self.assertIsNone(rows[1]["used_at"])
         self.assertEqual(rows[1]["new_email"], "second@example.com")
 
-    @patch("app.profile.data.validate_email", side_effect=_fake_validate_email)
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
     @patch("app.profile.routes.send_email")
     def test_taken_email_yields_the_same_response_as_an_available_one(
         self, mock_send_email, mock_validate
@@ -211,6 +203,73 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
             row = query_one("SELECT email FROM users WHERE username = 'alice'")
 
         self.assertEqual(row["email"], "old@example.com")
+
+
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_case_variant_of_another_users_email_is_a_silent_no_op(
+        self, mock_send_email, mock_validate
+    ):
+        from app.db import execute, query_one
+        from app.security import hash_password
+
+        with self.app.app_context():
+            execute(
+                "INSERT INTO users (email, username, last_name, first_name, password_hash, email_verified) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                ("taken@example.com", "bob", "Doe", "Bob", hash_password("StrongPass123!")),
+            )
+
+        token = self._login_and_get_token()
+        response = self.client.post(
+            "/profile/edit",
+            data={
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "Taken@Example.com",
+                "csrf_token": token,
+            },
+            follow_redirects=True,
+        )
+
+        self.assertIn(
+            "If this address is valid, a confirmation email has been sent.",
+            response.get_data(as_text=True),
+        )
+        mock_send_email.assert_not_called()
+        with self.app.app_context():
+            pending = query_one(
+                "SELECT 1 FROM email_changes WHERE user_id = (SELECT id FROM users WHERE username = 'alice')"
+            )
+        self.assertIsNone(pending)
+
+    @patch("app.utils.validate_email", side_effect=_fake_validate_email)
+    @patch("app.profile.routes.send_email")
+    def test_case_variant_of_own_email_is_treated_as_unchanged(self, mock_send_email, mock_validate):
+        from app.db import query_one
+
+        token = self._login_and_get_token()
+        response = self.client.post(
+            "/profile/edit",
+            data={
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "Old@Example.com",
+                "csrf_token": token,
+            },
+            follow_redirects=True,
+        )
+
+        self.assertNotIn(
+            "If this address is valid, a confirmation email has been sent.",
+            response.get_data(as_text=True),
+        )
+        mock_send_email.assert_not_called()
+        with self.app.app_context():
+            pending = query_one(
+                "SELECT 1 FROM email_changes WHERE user_id = (SELECT id FROM users WHERE username = 'alice')"
+            )
+        self.assertIsNone(pending)
 
 
 if __name__ == "__main__":

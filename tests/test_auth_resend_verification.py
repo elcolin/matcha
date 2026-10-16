@@ -199,6 +199,13 @@ class ResendVerificationEmailTests(unittest.TestCase):
         mock_send_email.assert_called_once()
         self.assertEqual(mock_send_email.call_args[0][0], "unverified@example.com")
 
+    @patch("app.auth.routes.send_email")
+    def test_local_part_casing_is_ignored(self, mock_send_email):
+        self._post("Unverified@example.com")
+
+        mock_send_email.assert_called_once()
+        self.assertEqual(mock_send_email.call_args[0][0], "unverified@example.com")
+
     @patch("app.auth.routes.send_email", side_effect=RuntimeError("SMTP down"))
     def test_smtp_failure_returns_generic_response(self, mock_send_email):
         response = self._post("unverified@example.com")
