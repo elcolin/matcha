@@ -122,8 +122,10 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
 
     def test_index_anonymous_links_to_register(self):
         html = self._get_html("/")
-        # Three CTA links in the page body plus the navbar "Register" link.
-        self.assertEqual(html.count('href="/register"'), 4)
+        # Two CTA links (hero + bottom CTA) plus the navbar Sign Up link.
+        self.assertEqual(html.count('href="/register"'), 3)
+        self.assertIn("Find Your Feathered Match", html)
+        self.assertIn("Create Account", html)
 
     def test_anonymous_pages_do_not_poll_notifications(self):
         for url in ("/", "/login", "/register", "/password-reset/request"):
