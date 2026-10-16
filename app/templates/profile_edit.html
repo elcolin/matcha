@@ -129,11 +129,13 @@
                     </div>
 
                     {% if profile.photos | length < 5 %}
-                    <form method="post" action="{{ url_for('profile.profile_photos') }}" enctype="multipart/form-data">
+                    <form method="post" action="{{ url_for('profile.profile_photos') }}" enctype="multipart/form-data" id="photo-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-2">
                             <label class="form-label" for="photo">Add a photo</label>
-                            <input class="form-control" type="file" id="photo" name="photo" accept=".png,.jpg,.jpeg,.gif,.webp" required>
+                            <input class="form-control" type="file" id="photo" name="photo" accept=".png,.jpg,.jpeg,.gif,.webp"
+                                   data-max-bytes="{{ max_upload_bytes }}" aria-describedby="photo-error" required>
+                            <div class="text-danger small mt-1" id="photo-error" role="alert"></div>
                         </div>
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" id="is_profile_photo" name="is_profile_photo" value="1">
@@ -248,5 +250,25 @@
       requestPosition();
     }
   })();
+
+  // Client-side size check (the server enforces MAX_CONTENT_LENGTH anyway).
+  const photoForm = document.getElementById('photo-form');
+  if (photoForm) {
+    const photoInput = document.getElementById('photo');
+    const photoError = document.getElementById('photo-error');
+    const maxBytes = Number(photoInput.dataset.maxBytes);
+
+    photoInput.addEventListener('change', () => { photoError.textContent = ''; });
+    photoForm.addEventListener('submit', (event) => {
+      const file = photoInput.files[0];
+      if (file && file.size > maxBytes) {
+        event.preventDefault();
+        const maxMb = Math.round(maxBytes / (1024 * 1024) * 10) / 10;
+        photoError.textContent = `This photo is too large: the maximum size is ${maxMb} MB.`;
+        photoInput.focus();
+      }
+    });
+  }
+
 </script>
 {% endblock %}

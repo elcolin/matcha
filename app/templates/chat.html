@@ -69,6 +69,18 @@
   const form = document.getElementById('send-form');
   const input = document.getElementById('message-input');
 
+  // Endpoint URLs generated server-side with a 0 placeholder for the partner id.
+  const CHAT_CONVERSATION_URL = {{ url_for('chat.conversation', user_id=0) | tojson }};
+  const CHAT_SEND_URL = {{ url_for('chat.send_message', user_id=0) | tojson }};
+  const CHAT_PRESENCE_URL = {{ url_for('chat.ping_presence', user_id=0) | tojson }};
+  const CHAT_ONLINE_STATUS_URL = {{ url_for('users.online_status', id=0) | tojson }};
+  const CHAT_STREAM_URL = {{ url_for('chat.stream_events') | tojson }};
+
+  // Replace the "/0" id segment of a URL template with the partner id.
+  function partnerUrl(template) {
+    return template.replace(/\/0(?=\/|$)/, '/' + otherUserId);
+  }
+
   const renderedMessageIds = new Set();
   let lastMessageId = 0;
 
@@ -93,7 +105,7 @@
 
   // Load history once on page load.
   async function loadMessages() {
-      const response = await fetch(`/chat/${otherUserId}`)
+      const response = await fetch(partnerUrl(CHAT_CONVERSATION_URL))
       const rows = await response.json()
       rows.forEach(renderMessage)
   }
@@ -104,7 +116,7 @@
     if (!content) return;
       renderMessage({ sender_id: currentUserId, content });
       input.value = '';
-    fetch(`/chat/${otherUserId}/send`, {
+    fetch(partnerUrl(CHAT_SEND_URL), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({ content }),
@@ -112,7 +124,7 @@
   });
   
   function connectStream() {
-    const stream = new EventSource(`/chat/stream?since=${lastMessageId}`);
+    const stream = new EventSource(`${CHAT_STREAM_URL}?since=${lastMessageId}`);
     stream.addEventListener('message', (event) => {
       const msg = JSON.parse(event.data);
       if (msg.sender_id === otherUserId) {
@@ -126,7 +138,7 @@
   // Let the server know this conversation is actively being viewed, so the
   // recipient doesn't get a redundant notification for messages they see live.
   function pingPresence() {
-    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST' });
   }
   pingPresence();
   setInterval(pingPresence, 8000);
@@ -139,7 +151,7 @@
 
   async function refreshPartnerOnlineStatus() {
     try {
-      const response = await fetch(`/users/${otherUserId}/online-status`);
+      const response = await fetch(partnerUrl(CHAT_ONLINE_STATUS_URL));
       if (!response.ok) return;
       const data = await response.json();
       if (!onlineIndicator || !onlineLabel) return;

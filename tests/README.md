@@ -14,16 +14,23 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation). La localisation est validée et géocodée avant un unique `UPDATE` (tout ou rien) ; coordonnées GPS validées côté serveur ; la localisation n'est traitée que si le payload contient `location_consent_gps`.
 - Formulaire d'édition de profil (`test_profile_edit_location.py`, issue #107) — `POST /profile/edit` : erreur de géocodage unique et aucune écriture, coordonnées GPS invalides rejetées, saisie manuelle sans consentement GPS, absence de champs de localisation sans effet sur la localisation ; rendu du bloc d'alerte `role="alert"` et du quartier optionnel.
 - Affichage de la localisation sur les fiches (`test_profile_location_display.py`, issue #107) — aucun rendu de la chaîne `None` sur la fiche profil et la carte, affichage des seules parties de localisation disponibles.
+- `app/match/routes.py` — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
+- `app/auth/routes.py::resend_verification_email` (`test_auth_resend_verification.py`, issue #9) — renvoi du lien de vérification pour un compte non vérifié : invalidation des liens non utilisés précédents, aucun envoi pour un compte vérifié ou inconnu, réponse indiscernable quel que soit l'état du compte.
+- `app/profile/data.py` — mise à jour email/prénom/nom (`UserUpdater`).
+- `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`, `_reencode_photo` : décodage et réencodage Pillow, rejet des fichiers non décodables, garde anti-bombe de décompression, animations, suppression des métadonnées ; réponse 413 pour les uploads trop lourds), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
+- `app/profile/routes.py` — validation/upload de photo (`_save_uploaded_photo`), mise à jour de profil (`_update_profile` : gender/preference/tags/géolocalisation).
 - Confidentialité de la fiche profil (`test_profile_payload.py`, issue #82) — `GET /profile/<id>` exige une connexion (401 sinon) ; `_profile_payload` n'expose latitude/longitude que sur demande explicite (`include_coordinates`), y compris via `candidate_profiles` où seule la distance est conservée.
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
 - Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
+- `app/auth/routes.py::register` (`test_registration.py`) — un utilisateur connecté est redirigé vers l'accueil en GET et en POST, sans création de compte ni envoi d'email ; un visiteur anonyme ou une session obsolète accède toujours au formulaire.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
+- `test_email_html_escape.py` — échappement HTML du prénom dans l'email de vérification (régression XSS sur `app/auth/routes.py::send_verification_email`).
 - `test_url_map.py` — URLs publiques des blueprints `profile`, `notifications` et `users` (préfixes `url_prefix`, règles de la `url_map`, racines `/users/`, `/profile/`, `/notifications/` non routées).
 
 `tests/helpers.py` fournit `DBTestCase`, une base commune qui pousse un contexte Flask adossé à une base SQLite temporaire (chargée depuis le vrai `app/schema.sql`), sans jamais toucher `instance/matcha.db`.
 
-Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`register`, `login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
+Hors périmètre pour l'instant (tests d'intégration/routes HTTP, pas des tests unitaires) : les routes Flask elles-mêmes non listées ci-dessus (`login`, `send_message`, etc.), qui mêlent session/requête HTTP et logique métier.
 
 ## Exécution locale
 Depuis la racine du dépôt :

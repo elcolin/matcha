@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from markupsafe import escape
 
 from app.db import execute, query_one
 from app.email import send_email
@@ -63,7 +64,7 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
             "Verify your Matcha account",
             f"""
             <h1>Welcome to Matcha! 🐦</h1>
-            <p>Thanks for signing up, {first_name}!</p>
+            <p>Thanks for signing up, {escape(first_name)}!</p>
             <p><a href="{verify_link}">Verify your email</a></p>
             <p>If you did not create this account, ignore this email.</p>
             """,
@@ -77,6 +78,9 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
+    if g.current_user:
+        return redirect(url_for("main.home"))
+
     if request.method == "GET":
         return render_template("register.html")
 
@@ -146,6 +150,36 @@ def verify_email(token):
     return redirect(url_for("auth.login", verified=1))
 
 
+@auth_bp.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification_email():
+    if request.method == "GET":
+        return render_template("resend_verification.html")
+
+    raw_email = str(request.form.get("email", "")).strip()
+    if not raw_email:
+        return render_template("resend_verification.html", error="Email is required")
+
+    try:
+        email = validate_email(raw_email, check_deliverability=False).normalized
+    except EmailNotValidError:
+        return render_template("resend_verification.html", error="Invalid email address")
+
+    user = query_one("SELECT id, first_name, email_verified FROM users WHERE email = ?", (email,))
+    if user and not user["email_verified"]:
+        # Invalidate pending links before issuing the new one so only the latest works.
+        execute(
+            "UPDATE email_verifications SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+            (utcnow_iso(), user["id"]),
+        )
+        send_verification_email(user["id"], email, user["first_name"])
+
+    # Same response whatever the account state, to avoid account enumeration.
+    return render_template(
+        "resend_verification.html",
+        success="If an account exists with this email and is not yet verified, a new verification link has been sent.",
+    )
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
@@ -167,7 +201,7 @@ def login():
         return render_template("login.html", error="Invalid username or password")
 
     if not user["email_verified"]:
-        return render_template("login.html", error="Please verify your email before logging in")
+        return render_template("login.html", error="Please verify your email before logging in", unverified=True)
 
     execute("INSERT INTO login_attempts (username, success) VALUES (?, 1)", (username,))
     session.clear()

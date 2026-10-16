@@ -81,13 +81,13 @@
                                     {% endif %}
                                 {% elif profile.is_self %}
                                     <div class="card profile-card" id="profileCard">
-                                        <a href="{{ url_for('profile.edit_profile', id=profile.id) }}"
+                                        <a href="{{ url_for('profile.edit_profile') }}"
                                            class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
                                     </div>
                                 {% endif %}
                             {% elif profile.is_self %}
                                 <div class="card profile-card" id="profileCard">
-                                    <a href="{{ url_for('profile.edit_profile', id=profile.id) }}"
+                                    <a href="{{ url_for('profile.edit_profile') }}"
                                        class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
                                 </div>
                             {% endif %}
