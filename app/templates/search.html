@@ -43,8 +43,7 @@
             <label class="form-label" for="order">Order</label>
             <select class="form-select" id="order" name="order">
                 <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
-                <option value="desc" {% if args.get('order', 'desc') == 'desc' %}selected{% endif %}>Descending</option>
-            </select>
+                 <option value="desc" {% if args.get('order') == 'desc' %}selected{% endif %}>Descending</option>            </select>
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-danger">Search</button>
@@ -54,27 +53,9 @@
     {% if searched %}
     <div class="row g-4">
         {% for profile in profiles %}
-        <div class="col-md-4">
-            <div class="card profile-card shadow-sm">
-                <img src="{{ profile.photos[0].url if profile.photos else 'https://placehold.co/600x400?text=Matcha' }}"
-                     class="card-img-top"
-                     alt="{{ profile.first_name or profile.username }}'s profile">
-                <div class="card-body text-center">
-                <h5>{{ profile.first_name or profile.username }}, {{ profile.age }}</h5>
-                <p class="text-muted mb-1">{{ profile.city or 'Unknown' }}</p>
-                    <p class="mb-2">
-                        {% if profile.distance_km is not none %}
-                        <span class="badge bg-secondary">{{ "%.1f"|format(profile.distance_km) }} km</span>
-                        {% endif %}
-                        <span class="badge bg-info text-dark">{{ profile.shared_tags_count }} shared tags</span>
-                        <span class="badge bg-warning text-dark">{{ profile.popularity_score }} pts</span>
-                    </p>
-                    <a href="{{ url_for('profile.detail', id=profile.id) }}" class="btn btn-outline-danger btn-sm">View</a>
-                </div>
-            </div>
-        </div>
+            {% include 'components/profile_card.html' %}
         {% else %}
-        <p class="text-muted">No profiles match your search.</p>
+            <p class="col-12 text-muted">No profiles match your search.</p>
         {% endfor %}
     </div>
     {% else %}

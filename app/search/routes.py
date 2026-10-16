@@ -1,5 +1,4 @@
 from flask import Blueprint, g, render_template, request
-
 from app.match.routes import MISSING_DISTANCE_KM, candidate_profiles
 from app.utils import login_required
 
@@ -48,12 +47,19 @@ def _sort(items, args):
 @search_bp.route("/search", methods=["GET"])
 @login_required
 def search_view():
-    searched = bool(request.args)  # the form always sends sort_by/order, so any submit counts
+    searched = bool(request.args)
     profiles = []
     if searched:
         profiles = candidate_profiles(g.current_user["id"])
         profiles = _sort(_filter(profiles, request.args), request.args)[:50]
-        for p in profiles:  # hide the placeholder distance for users without GPS
+
+        for p in profiles:
             if p["distance_km"] >= MISSING_DISTANCE_KM:
                 p["distance_km"] = None
-    return render_template("search.html", profiles=profiles, searched=searched, args=request.args)
+
+    return render_template(
+        "search.html",
+        profiles=profiles,
+        searched=searched,
+        args=request.args,
+    )
