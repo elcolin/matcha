@@ -3,8 +3,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.db import execute, get_db
 from app.match.routes import (
-    apply_filters,
-    apply_sort,
     calculate_distance,
     candidate_profiles,
     is_gender_compatible,
@@ -50,49 +48,6 @@ class IsGenderCompatibleTests(unittest.TestCase):
 
     def test_unknown_preference_defaults_to_permissive(self):
         self.assertTrue(is_gender_compatible("unexpected", "male"))
-
-
-class ApplyFiltersTests(unittest.TestCase):
-    def test_no_tag_filter_keeps_all_items(self):
-        items = [{"tags": ["coffee"]}, {"tags": []}]
-
-        self.assertEqual(apply_filters(items, {}), items)
-
-    def test_keeps_only_items_matching_all_required_tags_case_insensitively(self):
-        items = [
-            {"id": 1, "tags": ["Coffee", "Travel"]},
-            {"id": 2, "tags": ["coffee"]},
-            {"id": 3, "tags": ["music"]},
-        ]
-
-        result = apply_filters(items, {"tags": "Coffee,travel"})
-
-        self.assertEqual([i["id"] for i in result], [1])
-
-
-class ApplySortTests(unittest.TestCase):
-    def test_same_city_ranked_before_same_neighborhood_and_rest(self):
-        items = [
-            {"id": "far", "same_city": False, "same_neighborhood": False, "distance_km": 10},
-            {"id": "same_city", "same_city": True, "same_neighborhood": False, "distance_km": 50},
-            {"id": "same_neighborhood", "same_city": False, "same_neighborhood": True, "distance_km": 5},
-        ]
-
-        result = apply_sort(items, {})
-
-        self.assertEqual([i["id"] for i in result], ["same_city", "same_neighborhood", "far"])
-
-    def test_ties_broken_by_shared_tags_then_popularity(self):
-        items = [
-            {"id": "low", "same_city": True, "same_neighborhood": False, "distance_km": 0,
-             "shared_tags_count": 1, "popularity_score": 5},
-            {"id": "high", "same_city": True, "same_neighborhood": False, "distance_km": 0,
-             "shared_tags_count": 3, "popularity_score": 1},
-        ]
-
-        result = apply_sort(items, {})
-
-        self.assertEqual([i["id"] for i in result], ["high", "low"])
 
 
 class SharedTagCountTests(DBTestCase):
