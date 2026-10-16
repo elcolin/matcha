@@ -184,5 +184,45 @@ class RegistrationFlowTests(unittest.TestCase):
         mock_send_email.assert_called_once()
 
 
+    def _register(self, email, username):
+        return self.client.post(
+            "/register",
+            data={
+                "email": email,
+                "username": username,
+                "first_name": "New",
+                "last_name": "User",
+                "password": "J8#qL2!vX9@p",
+                "confirm": "J8#qL2!vX9@p",
+                "csrf_token": self._get_csrf_token(),
+            },
+        )
+
+    @patch("app.auth.routes.send_email")
+    def test_register_rejects_case_variant_of_existing_email(self, mock_send_email):
+        from app.db import query_all
+
+        self._create_verified_user("taken")  # taken@example.com
+
+        response = self._register("Taken@Example.com", "someoneelse")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Email or username already exists", response.get_data(as_text=True))
+        mock_send_email.assert_not_called()
+        with self.app.app_context():
+            rows = query_all("SELECT id FROM users WHERE username = ?", ("someoneelse",))
+        self.assertEqual(rows, [])
+
+    @patch("app.auth.routes.send_email")
+    def test_register_stores_email_fully_lowercased(self, mock_send_email):
+        from app.db import query_one
+
+        self._register("Newuser@Example.com", "newuser")
+
+        with self.app.app_context():
+            row = query_one("SELECT email FROM users WHERE username = ?", ("newuser",))
+        self.assertEqual(row["email"], "newuser@example.com")
+        self.assertEqual(mock_send_email.call_args[0][0], "newuser@example.com")
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-from email_validator import EmailNotValidError, validate_email
+from email_validator import EmailNotValidError
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from markupsafe import escape
 
@@ -17,7 +17,7 @@ from app.security import (
     validate_password_strength,
     verify_password,
 )
-from app.utils import APIError, login_required
+from app.utils import APIError, login_required, normalize_email
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -92,7 +92,7 @@ def register():
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
     try:
-        email = validate_email(data["email"].strip(), check_deliverability=False).normalized
+        email = normalize_email(data["email"])
     except EmailNotValidError:
         return render_template("register.html", error="Invalid email address")
 
@@ -160,7 +160,7 @@ def resend_verification_email():
         return render_template("resend_verification.html", error="Email is required")
 
     try:
-        email = validate_email(raw_email, check_deliverability=False).normalized
+        email = normalize_email(raw_email)
     except EmailNotValidError:
         return render_template("resend_verification.html", error="Invalid email address")
 
