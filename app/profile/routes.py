@@ -334,18 +334,16 @@ def _request_email_change_and_notify(user_id: int, new_email):
                 <p>If you did not request this, ignore this email: your current address stays active.</p>
                 """,
             )
+            flash(
+                    "If this address is valid, a confirmation email has been sent.",
+                    "success",
+                )
         except Exception:
             # Never let an SMTP failure surface as a 500, and never log the
             # raw email address (see CLAUDE.md: no secret/PII in logs).
             current_app.logger.exception(
                 "Failed to send email change confirmation to user %s", user_id
             )
-
-    flash(
-        "If this address is valid, a confirmation email has been sent.",
-        "success",
-    )
-
 
 @profile_bp.route("/edit", methods=["POST"])
 @login_required
