@@ -142,6 +142,14 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
         self.assertNotIn("Join and start matching today.", html)
         self.assertNotIn("Create Account", html)
 
+    def test_logged_in_index_has_no_register_link(self):
+        user_id = self._create_user("alice")
+        self._login_as(user_id)
+        html = self._get_html("/")
+        self.assertNotIn('href="/register"', html)
+        self.assertIn('href="/search"', html)
+        self.assertIn("Search profiles", html)
+
     def test_chat_view_without_partner_has_no_conversation_script(self):
         user_id = self._create_user("alice")
         self._login_as(user_id)
