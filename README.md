@@ -8,6 +8,7 @@ Site de rencontre développé dans le cadre du projet 42 **Matcha** : inscriptio
 - Base de données : SQLite, SQL manuscrit (`app/db.py`, schéma dans `app/schema.sql`).
 - Templates : Jinja2 (`app/templates/`), CSS custom, JS vanilla minimal.
 - Auth : sessions Flask, tokens signés `itsdangerous`, protection CSRF sur toutes les requêtes POST/PUT/PATCH/DELETE.
+- Uploads de photos : chaque image est décodée puis réencodée avec Pillow (PNG, JPEG, GIF, WebP ; format déterminé par le contenu, pas par le nom de fichier), métadonnées supprimées (EXIF/GPS, ICC, commentaires), nom de fichier aléatoire, 5 MB max (contrôle côté client et côté serveur).
 - Temps réel : polling léger (chat 5s, notifications SSE), statut online/offline avec pastille visuelle et polling 5s.
 
 Détails complets dans [`CLAUDE.md`](./CLAUDE.md).

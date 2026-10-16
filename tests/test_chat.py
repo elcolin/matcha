@@ -183,7 +183,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
 
         ping = re.search(r"function pingPresence\(\)\s*\{(.*?)\n  \}", html, re.DOTALL)
         self.assertIsNotNone(ping)
-        self.assertIn("/presence", ping.group(1))
+        self.assertIn("CHAT_PRESENCE_URL", ping.group(1))
         self.assertIn("'X-CSRFToken': csrfToken", ping.group(1))
 
     def test_presence_ping_requires_login(self):

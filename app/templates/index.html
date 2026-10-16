@@ -16,7 +16,7 @@
             Meet new people, connect instantly, and build real relationships.
         </p>
 
-        <a href="/register" class="btn btn-light cta-btn fw-semibold mt-3">
+        <a href="{{ url_for('auth.register') }}" class="btn btn-light cta-btn fw-semibold mt-3">
             Get Started
         </a> -->
         </div>
@@ -59,7 +59,7 @@
         <div class="container">
             <h2>Ready to meet someone?</h2>
             <p class="text-muted">Join and start matching today.</p>
-            <a href="/register" class="btn btn-danger btn-lg cta-btn">Create Account</a>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-danger btn-lg cta-btn">Create Account</a>
         </div>
     </section>
 {% endblock %}

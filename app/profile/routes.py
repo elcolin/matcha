@@ -1,5 +1,8 @@
+import io
 import secrets
 import os
+import threading
+import warnings
 from datetime import datetime, timezone
 
 from app.config import UserConfig
@@ -18,6 +21,7 @@ from flask import (
     current_app,
 )
 
+from PIL import Image, ImageOps, ImageSequence
 from werkzeug.utils import secure_filename
 
 from app.db import execute, query_all, query_one
@@ -36,8 +40,12 @@ profile_bp = Blueprint("profile", __name__, url_prefix="/profile")
 
 
 def _is_form_request():
-    """True for a plain HTML form submission (vs. a JSON API call)."""
-    return request.get_json(silent=True) is None and not request.is_json
+    """True for a plain HTML form submission (vs. a JSON API call).
+
+    Header-based only: it must never read the body, since it is also used by
+    the 413 handler in app/__init__.py where reading the body would re-raise.
+    """
+    return not request.is_json
 
 
 def _compute_online(online_until: str | None) -> bool:
@@ -89,8 +97,21 @@ def _profile_payload(user_id: int, include_email: bool = False, include_coordina
         (user_id,),
     )
 
-    online = _compute_online(row["online_until"])
+    return _build_profile_payload(
+        row,
+        [r["name"] for r in tags],
+        [dict(r) for r in photos],
+        include_email=include_email,
+        include_coordinates=include_coordinates,
+    )
 
+
+def _build_profile_payload(row, tags, photos, include_email: bool = False, include_coordinates: bool = False):
+    """Shape a users+profiles row into the profile dict (no DB access).
+
+    `tags` is a list of tag names (sorted by name), `photos` a list of
+    {id, url, is_profile_photo} dicts (profile photo first, then by id).
+    """
     payload = {
         "id": row["id"],
         "username": row["username"],
@@ -104,10 +125,10 @@ def _profile_payload(user_id: int, include_email: bool = False, include_coordina
         "location_consent_gps": bool(row["location_consent_gps"]),
         "popularity_score": row["popularity_score"],
         "age": row["age"],
-        "online": online,
+        "online": _compute_online(row["online_until"]),
         "last_seen_at": row["last_seen_at"],
-        "tags": [r["name"] for r in tags],
-        "photos": [dict(r) for r in photos],
+        "tags": tags,
+        "photos": photos,
     }
 
     if include_email:
@@ -133,6 +154,28 @@ def _ensure_primary_photo(user_id: int):
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
+
+def _delete_user_photo(user_id: int, photo_id):
+    """Delete one of `user_id`'s photos: DB row, uploaded file (if local), then
+    reassign the profile photo. A foreign or unknown `photo_id` is a no-op."""
+    row = query_one(
+        "SELECT url FROM photos WHERE id = ? AND user_id = ?",
+        (photo_id, user_id),
+    )
+    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
+    if row and row["url"].startswith("/static/uploads/"):
+        try:
+            os.remove(
+                os.path.join(
+                    current_app.config["UPLOAD_FOLDER"],
+                    os.path.basename(row["url"]),
+                )
+            )
+        except FileNotFoundError:
+            pass
+    _ensure_primary_photo(user_id)
+
+
 def _pending_email_change(user_id: int):
     """Return the active (not used, not expired) email_changes row for this
     user, if any, so profile_edit.html can tell the user a confirmation is
@@ -155,7 +198,10 @@ def edit_profile():
     profile = _profile_payload(g.current_user["id"], include_email=True, include_coordinates=True)
     pending_email_change = _pending_email_change(g.current_user["id"])
     return render_template(
-        "profile_edit.html", profile=profile, pending_email_change=pending_email_change
+        "profile_edit.html",
+        profile=profile,
+        pending_email_change=pending_email_change,
+        max_upload_bytes=current_app.config["MAX_CONTENT_LENGTH"],
     )
 
 def _update_profile(user_id: int, data):
@@ -318,18 +364,90 @@ def edit_profile_submit():
     return redirect(url_for("profile.edit_profile"))
 
 ALLOWED_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+PHOTO_FORMAT_ERROR = "Photo must be a PNG, JPEG, GIF or WebP image"
+
+
+# Process-global Pillow setting: images above this pixel count trigger a
+# DecompressionBombWarning (rejected below), above twice it an error.
+Image.MAX_IMAGE_PIXELS = 25_000_000
+MAX_PHOTO_FRAMES = 100
+# Multi-picture JPEGs (MPF, common on phones) open as "MPO": only their
+# primary image is kept, stored as a plain JPEG.
+PHOTO_FORMAT_EXTENSIONS = {"PNG": "png", "JPEG": "jpg", "MPO": "jpg", "GIF": "gif", "WEBP": "webp"}
+# Only rendering-related info survives re-encoding (no EXIF/GPS, ICC, comments...).
+PHOTO_FRAME_INFO_KEYS = ("transparency", "duration")
+# warnings.catch_warnings() swaps process-global state: concurrent uploads
+# (threaded server) must not interleave it.
+_WARNINGS_CAPTURE_LOCK = threading.Lock()
+
+
+def _reencode_photo(data):
+    """Fully decode an uploaded image and re-encode it without metadata.
+
+    Returns (bytes, extension); raises APIError if the content is not a
+    complete, reasonably sized PNG/JPEG/GIF/WebP image.
+    """
+    try:
+        with _WARNINGS_CAPTURE_LOCK, warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with Image.open(io.BytesIO(data)) as probe:
+                probe.verify()
+            with Image.open(io.BytesIO(data)) as img:
+                if any(issubclass(w.category, Image.DecompressionBombWarning) for w in caught):
+                    raise APIError(PHOTO_FORMAT_ERROR, 400)
+                ext = PHOTO_FORMAT_EXTENSIONS.get(img.format)
+                n_frames = getattr(img, "n_frames", 1)
+                total_pixels = img.width * img.height * n_frames
+                if ext is None or n_frames > MAX_PHOTO_FRAMES or total_pixels > Image.MAX_IMAGE_PIXELS:
+                    raise APIError(PHOTO_FORMAT_ERROR, 400)
+
+                out_format = "JPEG" if img.format == "MPO" else img.format
+                sources = [img] if img.format == "MPO" else ImageSequence.Iterator(img)
+                frames = []
+                for frame in sources:
+                    frame = ImageOps.exif_transpose(frame)
+                    if ext == "jpg" and frame.mode not in ("RGB", "L"):
+                        frame = frame.convert("RGB")
+                    frame.info = {k: frame.info[k] for k in PHOTO_FRAME_INFO_KEYS if k in frame.info}
+                    frames.append(frame)
+
+                out = io.BytesIO()
+                if len(frames) > 1:
+                    frames[0].save(
+                        out,
+                        format=out_format,
+                        save_all=True,
+                        append_images=frames[1:],
+                        duration=[f.info.get("duration", 100) for f in frames],
+                        loop=img.info.get("loop", 0),
+                    )
+                else:
+                    frames[0].save(out, format=out_format)
+    except APIError:
+        raise
+    except Exception:
+        # Pillow does not guarantee its exception set on malformed input
+        # (e.g. struct.error): any decode failure is an invalid photo.
+        raise APIError(PHOTO_FORMAT_ERROR, 400)
+    return out.getvalue(), ext
+
 
 def _save_uploaded_photo(file_storage):
     filename = secure_filename(file_storage.filename or "")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if not filename or ext not in ALLOWED_PHOTO_EXTENSIONS:
-        raise APIError("Photo must be one of: png, jpg, jpeg, gif, webp", 400)
+        raise APIError(PHOTO_FORMAT_ERROR, 400)
+
+    # The client filename/extension is untrusted: the stored content and
+    # extension come from decoding and re-encoding the actual image.
+    content, detected_ext = _reencode_photo(file_storage.stream.read())
 
     upload_folder = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_folder, exist_ok=True)
 
-    unique_name = f"{secrets.token_hex(8)}.{ext}"
-    file_storage.save(os.path.join(upload_folder, unique_name))
+    unique_name = f"{secrets.token_hex(8)}.{detected_ext}"
+    with open(os.path.join(upload_folder, unique_name), "wb") as fh:
+        fh.write(content)
 
     return f"/static/uploads/{unique_name}"
 
@@ -381,22 +499,7 @@ def profile_photos():
                 flash("photo_id is required", "error")
                 return redirect(url_for("profile.edit_profile"))
             raise APIError("photo_id is required", 400)
-        row = query_one(
-            "SELECT url FROM photos WHERE id = ? AND user_id = ?",
-            (photo_id, user_id),
-        )
-        execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
-        if row and row.get("url", "").startswith("/static/uploads/"):
-            try:
-                os.remove(
-                    os.path.join(
-                        current_app.config["UPLOAD_FOLDER"],
-                        os.path.basename(row["url"]),
-                    )
-                )
-            except FileNotFoundError:
-                pass
-        _ensure_primary_photo(user_id)
+        _delete_user_photo(user_id, photo_id)
 
     if is_form:
         flash("Photo updated.", "success")
@@ -415,8 +518,7 @@ def profile_photos_delete_form():
         flash("photo_id is required", "error")
         return redirect(url_for("profile.edit_profile"))
 
-    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
-    _ensure_primary_photo(user_id)
+    _delete_user_photo(user_id, photo_id)
     flash("Photo deleted.", "success")
     return redirect(url_for("profile.edit_profile"))
 

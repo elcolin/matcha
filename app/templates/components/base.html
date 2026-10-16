@@ -90,7 +90,7 @@
 
   async function refreshUnreadBadge() {
     try {
-      const response = await fetch('/notifications/unread-count');
+      const response = await fetch({{ url_for('notifications.unread_notifications_count') | tojson }});
       if (!response.ok) return;
       const data = await response.json();
       const badge = document.getElementById('notif-badge');
