@@ -154,6 +154,28 @@ def _ensure_primary_photo(user_id: int):
     if first:
         execute("UPDATE photos SET is_profile_photo = 1 WHERE id = ?", (first["id"],))
 
+
+def _delete_user_photo(user_id: int, photo_id):
+    """Delete one of `user_id`'s photos: DB row, uploaded file (if local), then
+    reassign the profile photo. A foreign or unknown `photo_id` is a no-op."""
+    row = query_one(
+        "SELECT url FROM photos WHERE id = ? AND user_id = ?",
+        (photo_id, user_id),
+    )
+    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
+    if row and row["url"].startswith("/static/uploads/"):
+        try:
+            os.remove(
+                os.path.join(
+                    current_app.config["UPLOAD_FOLDER"],
+                    os.path.basename(row["url"]),
+                )
+            )
+        except FileNotFoundError:
+            pass
+    _ensure_primary_photo(user_id)
+
+
 def _pending_email_change(user_id: int):
     """Return the active (not used, not expired) email_changes row for this
     user, if any, so profile_edit.html can tell the user a confirmation is
@@ -477,22 +499,7 @@ def profile_photos():
                 flash("photo_id is required", "error")
                 return redirect(url_for("profile.edit_profile"))
             raise APIError("photo_id is required", 400)
-        row = query_one(
-            "SELECT url FROM photos WHERE id = ? AND user_id = ?",
-            (photo_id, user_id),
-        )
-        execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
-        if row and row.get("url", "").startswith("/static/uploads/"):
-            try:
-                os.remove(
-                    os.path.join(
-                        current_app.config["UPLOAD_FOLDER"],
-                        os.path.basename(row["url"]),
-                    )
-                )
-            except FileNotFoundError:
-                pass
-        _ensure_primary_photo(user_id)
+        _delete_user_photo(user_id, photo_id)
 
     if is_form:
         flash("Photo updated.", "success")
@@ -511,8 +518,7 @@ def profile_photos_delete_form():
         flash("photo_id is required", "error")
         return redirect(url_for("profile.edit_profile"))
 
-    execute("DELETE FROM photos WHERE id = ? AND user_id = ?", (photo_id, user_id))
-    _ensure_primary_photo(user_id)
+    _delete_user_photo(user_id, photo_id)
     flash("Photo deleted.", "success")
     return redirect(url_for("profile.edit_profile"))
 
