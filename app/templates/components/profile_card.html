@@ -5,11 +5,12 @@
              alt="{{ profile.first_name or profile.username }}'s profile">
 
         <div class="card-body text-center">
-            <h5>{{ profile.first_name or profile.username }}, {{ profile.age }}</h5>
+            <h5>{{ profile.first_name or profile.username }}{% if profile.age %}, {{ profile.age }}{% endif %}</h5>
 
-            <p class="text-muted mb-1">
-                {{ profile.city or 'Unknown' }}{% if profile.neighborhood %} • {{ profile.neighborhood }}{% endif %}
-            </p>
+            {% set location_parts = [profile.city, profile.neighborhood] | select | list %}
+            {% if location_parts %}
+            <p class="text-muted mb-1">{{ location_parts | join(' • ') }}</p>
+            {% endif %}
 
             <p class="mb-2">
                 {% if profile.distance_km is not none and profile.distance_km < 99999 %}

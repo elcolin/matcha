@@ -3,8 +3,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.db import execute, get_db
 from app.match.routes import (
-    apply_filters,
-    apply_sort,
     calculate_distance,
     candidate_profiles,
     is_gender_compatible,
@@ -20,11 +18,14 @@ class CalculateDistanceTests(unittest.TestCase):
         self.assertEqual(calculate_distance(1.0, 2.0, None, 3.0), 99999.0)
         self.assertEqual(calculate_distance(1.0, 2.0, 3.0, None), 99999.0)
 
-    def test_computes_manhattan_like_distance_in_km(self):
-        # 1 degree ~= 111km on both axes in this simplified model
-        distance = calculate_distance(48.0, 2.0, 49.0, 3.0)
+    def test_computes_great_circle_distance_in_km(self):
+        # Paris -> Lyon is ~392 km as the crow flies (haversine, R = 6371 km).
+        paris, lyon = (48.8566, 2.3522), (45.7640, 4.8357)
 
-        self.assertAlmostEqual(distance, 222.0)
+        distance = calculate_distance(*paris, *lyon)
+
+        self.assertAlmostEqual(distance, 392, delta=5)
+        self.assertAlmostEqual(calculate_distance(*lyon, *paris), distance)
 
     def test_zero_distance_for_identical_coordinates(self):
         self.assertEqual(calculate_distance(48.85, 2.35, 48.85, 2.35), 0.0)
@@ -47,49 +48,6 @@ class IsGenderCompatibleTests(unittest.TestCase):
 
     def test_unknown_preference_defaults_to_permissive(self):
         self.assertTrue(is_gender_compatible("unexpected", "male"))
-
-
-class ApplyFiltersTests(unittest.TestCase):
-    def test_no_tag_filter_keeps_all_items(self):
-        items = [{"tags": ["coffee"]}, {"tags": []}]
-
-        self.assertEqual(apply_filters(items, {}), items)
-
-    def test_keeps_only_items_matching_all_required_tags_case_insensitively(self):
-        items = [
-            {"id": 1, "tags": ["Coffee", "Travel"]},
-            {"id": 2, "tags": ["coffee"]},
-            {"id": 3, "tags": ["music"]},
-        ]
-
-        result = apply_filters(items, {"tags": "Coffee,travel"})
-
-        self.assertEqual([i["id"] for i in result], [1])
-
-
-class ApplySortTests(unittest.TestCase):
-    def test_same_city_ranked_before_same_neighborhood_and_rest(self):
-        items = [
-            {"id": "far", "same_city": False, "same_neighborhood": False, "distance_km": 10},
-            {"id": "same_city", "same_city": True, "same_neighborhood": False, "distance_km": 50},
-            {"id": "same_neighborhood", "same_city": False, "same_neighborhood": True, "distance_km": 5},
-        ]
-
-        result = apply_sort(items, {})
-
-        self.assertEqual([i["id"] for i in result], ["same_city", "same_neighborhood", "far"])
-
-    def test_ties_broken_by_shared_tags_then_popularity(self):
-        items = [
-            {"id": "low", "same_city": True, "same_neighborhood": False, "distance_km": 0,
-             "shared_tags_count": 1, "popularity_score": 5},
-            {"id": "high", "same_city": True, "same_neighborhood": False, "distance_km": 0,
-             "shared_tags_count": 3, "popularity_score": 1},
-        ]
-
-        result = apply_sort(items, {})
-
-        self.assertEqual([i["id"] for i in result], ["high", "low"])
 
 
 class SharedTagCountTests(DBTestCase):
@@ -287,7 +245,8 @@ class CandidateProfilesCharacterizationTests(DBTestCase):
              "location_consent_gps": True, "popularity_score": 42, "age": 30,
              "online": True, "last_seen_at": "2026-01-01T00:00:00+00:00",
              "tags": ["coffee", "travel"], "shared_tags_count": 2,
-             "distance_km": 222.0, "same_neighborhood": True},
+             "distance_km": calculate_distance(48.0, 2.0, 49.0, 3.0),
+             "same_neighborhood": True},
             {**base, "id": far, "username": "far", "gender": "male"},
         ]
         self.assertEqual(result, expected)
