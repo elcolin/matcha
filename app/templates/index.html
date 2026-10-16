@@ -45,7 +45,7 @@
         <!-- PROFILES -->
         <section class="bg-light py-5">
             <div class="container">
-                <h2 class="text-center mb-4">Your matches</h2>
+                <h2 class="text-center mb-4">Profiles you might like</h2>
                 <div class="row g-4">
                     {% for profile in profiles %}
                         {% include 'components/profile_card.html' %}
@@ -54,12 +54,14 @@
             </div>
         </section>
     {% endif %}
-    <!-- CTA -->
-    <section class="text-center py-5">
-        <div class="container">
-            <h2>Ready to meet someone?</h2>
-            <p class="text-muted">Join and start matching today.</p>
-            <a href="{{ url_for('auth.register') }}" class="btn btn-danger btn-lg cta-btn">Create Account</a>
-        </div>
-    </section>
+    {% if not current_user %}
+        <!-- CTA -->
+        <section class="text-center py-5">
+            <div class="container">
+                <h2>Ready to meet someone?</h2>
+                <p class="text-muted">Join and start matching today.</p>
+                <a href="{{ url_for('auth.register') }}" class="btn btn-danger btn-lg cta-btn">Create Account</a>
+            </div>
+        </section>
+    {% endif %}
 {% endblock %}

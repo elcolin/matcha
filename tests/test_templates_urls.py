@@ -136,7 +136,9 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
         self.assertIn("/notifications/unread-count", html)
         # Rendered through url_for | tojson, i.e. as a JSON string literal.
         self.assertIn('fetch("/notifications/unread-count")', html)
-        self.assertIn('href="/register"', html)
+        self.assertNotIn("Ready to meet someone?", html)
+        self.assertNotIn("Join and start matching today.", html)
+        self.assertNotIn("Create Account", html)
 
     def test_chat_view_without_partner_has_no_conversation_script(self):
         user_id = self._create_user("alice")
