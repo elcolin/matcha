@@ -378,15 +378,18 @@ def _request_email_change_and_notify(user_id: int, new_email):
     (see app.auth.routes.confirm_email_change). No-op if `new_email` is
     empty.
 
-    Always flashes the same generic message regardless of whether the
-    change actually resulted in a token being issued (matches current
-    active email, or already used by another account): the observable
+    Flashes the same generic message for any address different from the
+    current one, whether or not a token was issued (already used by another
+    account, SMTP failure), and nothing when it is unchanged: the observable
     response must never reveal whether an email address is already
     registered (enumeration - see fix/password-reset-enumeration for the
     same pattern applied to the password reset flow).
     """
     if not new_email:
         return
+
+    current = query_one("SELECT email FROM users WHERE id = ?", (user_id,))
+    unchanged = current and current["email"].lower() == new_email.strip().lower()
 
     token = UserUpdater.request_email_change(
         user_id,
@@ -409,16 +412,18 @@ def _request_email_change_and_notify(user_id: int, new_email):
                 <p>If you did not request this, ignore this email: your current address stays active.</p>
                 """,
             )
-            flash(
-                    "If this address is valid, a confirmation email has been sent.",
-                    "success",
-                )
         except Exception:
             # Never let an SMTP failure surface as a 500, and never log the
             # raw email address (see CLAUDE.md: no secret/PII in logs).
             current_app.logger.exception(
                 "Failed to send email change confirmation to user %s", user_id
             )
+
+    if not unchanged:
+        flash(
+            "If this address is valid, a confirmation email has been sent.",
+            "success",
+        )
 
 @profile_bp.route("/edit", methods=["POST"])
 @login_required
