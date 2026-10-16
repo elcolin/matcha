@@ -8,6 +8,8 @@ from app.utils import login_required
 
 match_bp = Blueprint("match", __name__, url_prefix="/match")
 MISSING_DISTANCE_KM = 99999
+LOCATION_BUCKET_KM = 25
+
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -45,14 +47,24 @@ def shared_tag_count(current_id, candidate_id):
     )
     return rows[0]["c"] if rows else 0
 
+def _location_tier(item):
+    if item.get("same_city") and item.get("same_neighborhood"):
+        return 0
+    if item.get("same_city"):
+        return 1
+    distance = item.get("distance_km")
+    if distance is None or distance >= MISSING_DISTANCE_KM:
+        return 999  # unknown location goes last
+    return 2 + int(distance // LOCATION_BUCKET_KM) 
+
 
 def _bucket_rank(item):
-    distance = item.get("distance_km") if item.get("distance_km") is not None else MISSING_DISTANCE_KM
-    if item.get("same_city"):
-        return (0, 0, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-    if item.get("same_neighborhood"):
-        return (1, 0, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
-    return (2, distance, -item.get("shared_tags_count", 0), -item.get("popularity_score", 0))
+    return (
+        _location_tier(item),
+        -item.get("shared_tags_count", 0),
+        -item.get("popularity_score", 0),
+        item.get("distance_km", MISSING_DISTANCE_KM),  # last tiebreaker only
+    )
 
 
 def _same_place(a, b):
@@ -154,24 +166,10 @@ def candidate_profiles(viewer_id: int):
 
     return candidates
 
-def apply_filters(items, args):
-    required_tags = {t.strip().lower() for t in args.get("tags", "").split(",") if t.strip()}
-
-    def ok(item):
-        if required_tags and not required_tags.issubset(set(t.lower() for t in item.get("tags", []))):
-            return False
-        return True
-
-    return [item for item in items if ok(item)]
-
-def apply_sort(items, args):
-    items.sort(key=_bucket_rank)
-    return items
 
 @match_bp.route("", methods=["GET"])
 @login_required
 def suggestions():
     items = candidate_profiles(g.current_user["id"])
-    items = apply_filters(items, request.args)
-    items = apply_sort(items, request.args) 
+
     return jsonify(items)
