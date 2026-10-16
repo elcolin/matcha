@@ -15,7 +15,7 @@ PROFILE_ROW_SQL = """
 """
 
 
-def _fake_validate_email(email):
+def _fake_validate_email(email, **kwargs):
     result = MagicMock()
     result.normalized = email.lower()
     return result

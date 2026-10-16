@@ -290,7 +290,8 @@ class CandidateProfilesCharacterizationTests(DBTestCase):
              "location_consent_gps": True, "popularity_score": 42, "age": 30,
              "online": True, "last_seen_at": "2026-01-01T00:00:00+00:00",
              "tags": ["coffee", "travel"], "shared_tags_count": 2,
-             "distance_km": 222.0, "same_neighborhood": True},
+             "distance_km": calculate_distance(48.0, 2.0, 49.0, 3.0),
+             "same_neighborhood": True},
             {**base, "id": far, "username": "far", "gender": "male"},
         ]
         self.assertEqual(result, expected)
