@@ -14,11 +14,25 @@
                     <div class="card-body p-4">
                         <!-- NAME + AGE -->
                         <h2 class="fw-bold mb-0">{{ profile.name }}, {{ profile.age }} 🐦</h2>
-                        <p class="online-status">
-                            <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
-                            {{ 'Online' if profile.online else 'Offline' }}
-                        </p>
-                        <p class="text-muted">{{ profile.city }}</p>
+                        {% if not profile.is_self %}
+                            {% if profile.connected %}
+                                <span class="badge bg-danger my-2">💖 Matched</span>
+                            {% elif profile.liked_me %}
+                                <span class="badge bg-info text-dark my-2">💌 They liked you</span>
+                            {% elif profile.liked_by_me %}
+                                <span class="badge bg-secondary my-2">💖 You liked them</span>
+                            {% endif %}
+                        {% endif %}
+                        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+                            <p class="online-status mb-0">
+                                <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
+                                {{ 'Online' if profile.online else 'Offline' }}
+                            </p>
+                            <p class="text-muted mb-0">📍 {{ profile.city }}</p>
+                        </div>
+                        {% if profile.gender %}
+                            <p class="text-muted small">Gender: {{ profile.gender | capitalize }}</p>
+                        {% endif %}
                         <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
                         <!-- BIO -->
                         <p>{{ profile.bio }}</p>
@@ -29,8 +43,7 @@
                             {% endfor %}
                         </div>
                         <!-- ACTION BUTTONS -->
-                        <div class="d-flex gap-2">
-                            <!-- <a href="#" class="btn btn-danger action-btn">💖 Match</a> -->
+                        <div class="d-flex flex-wrap align-items-center gap-2">
                             {% if not profile.is_self %}
                                 {% if not profile.blocked_me %}
                                     {% if profile.liked_by_me %}
@@ -77,17 +90,10 @@
                                             <button type="submit" class="btn btn-outline-secondary action-btn">Report</button>
                                         </form>
                                     {% endif %}
-                                {% elif profile.is_self %}
-                                    <div class="card profile-card" id="profileCard">
-                                        <a href="{{ url_for('profile.edit_profile') }}"
-                                           class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
-                                    </div>
                                 {% endif %}
-                            {% elif profile.is_self %}
-                                <div class="card profile-card" id="profileCard">
-                                    <a href="{{ url_for('profile.edit_profile') }}"
-                                       class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
-                                </div>
+                            {% else %}
+                                <a href="{{ url_for('profile.edit_profile') }}"
+                                   class="btn btn-outline-dark action-btn display-fields">✏️ Edit profile</a>
                             {% endif %}
                         </div>
                     </div>

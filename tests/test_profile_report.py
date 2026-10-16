@@ -244,5 +244,57 @@ class ReportButtonRenderTests(ProfileReportTestCase):
         self.assertRegex(html, r'<button[^>]*\bdisabled\b[^>]*aria-disabled="true"[^>]*>Reported</button>')
 
 
+class LikeStatusRenderTests(ProfileReportTestCase):
+    def _profile_html(self):
+        self._login_and_get_token("reporter")
+        return self.client.get(f"/profile/{self.ids['reported']}").get_data(as_text=True)
+
+    def test_shows_popularity_as_plain_text(self):
+        html = self._profile_html()
+
+        self.assertIn("Popularity: 0", html)
+        self.assertNotIn("bg-warning text-dark", html)
+
+    def test_shows_they_liked_you_badge(self):
+        self._sql(
+            "INSERT INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
+            (self.ids["reported"], self.ids["reporter"]),
+        )
+
+        html = self._profile_html()
+
+        self.assertIn("💌 They liked you", html)
+        self.assertNotIn("You liked them", html)
+        self.assertNotIn("Matched", html)
+
+    def test_shows_you_liked_them_badge(self):
+        self._sql(
+            "INSERT INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
+            (self.ids["reporter"], self.ids["reported"]),
+        )
+
+        html = self._profile_html()
+
+        self.assertIn("💖 You liked them", html)
+        self.assertNotIn("They liked you", html)
+        self.assertNotIn("Matched", html)
+
+    def test_shows_matched_badge_for_mutual_likes(self):
+        self._sql(
+            "INSERT INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
+            (self.ids["reporter"], self.ids["reported"]),
+        )
+        self._sql(
+            "INSERT INTO likes (from_user_id, to_user_id) VALUES (?, ?)",
+            (self.ids["reported"], self.ids["reporter"]),
+        )
+
+        html = self._profile_html()
+
+        self.assertIn("💖 Matched", html)
+        self.assertNotIn("They liked you", html)
+        self.assertNotIn("You liked them", html)
+
+
 if __name__ == "__main__":
     unittest.main()
