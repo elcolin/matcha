@@ -34,11 +34,14 @@ class MissingLocationDisplayTests(_ProfileEditTestCase):
     def test_profile_card_does_not_render_none(self):
         profile = {
             "id": 1,
-            "name": "Bob",
+            "first_name": "Bob",
+            "username": "bob",
             "age": None,
             "city": None,
             "neighborhood": None,
-            "image": "",
+            "photos": [],
+            "distance_km": None,
+            "shared_tags_count": 0,
             "online": False,
             "popularity_score": 0,
         }
@@ -51,11 +54,14 @@ class MissingLocationDisplayTests(_ProfileEditTestCase):
     def test_profile_card_shows_available_location_parts(self):
         profile = {
             "id": 1,
-            "name": "Bob",
+            "first_name": "Bob",
+            "username": "bob",
             "age": 30,
             "city": "Lyon",
             "neighborhood": None,
-            "image": "",
+            "photos": [],
+            "distance_km": None,
+            "shared_tags_count": 0,
             "online": False,
             "popularity_score": 0,
         }
