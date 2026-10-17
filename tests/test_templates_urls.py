@@ -122,8 +122,10 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
 
     def test_index_anonymous_links_to_register(self):
         html = self._get_html("/")
-        # Three CTA links in the page body plus the navbar "Register" link.
-        self.assertEqual(html.count('href="/register"'), 4)
+        # Two CTA links (hero + bottom CTA) plus the navbar Sign Up link.
+        self.assertEqual(html.count('href="/register"'), 3)
+        self.assertIn("Find Your Feathered Match", html)
+        self.assertIn("Create Account", html)
 
     def test_anonymous_pages_do_not_poll_notifications(self):
         for url in ("/", "/login", "/register", "/password-reset/request"):
@@ -139,6 +141,14 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
         self.assertNotIn("Ready to meet someone?", html)
         self.assertNotIn("Join and start matching today.", html)
         self.assertNotIn("Create Account", html)
+
+    def test_logged_in_index_has_no_register_link(self):
+        user_id = self._create_user("alice")
+        self._login_as(user_id)
+        html = self._get_html("/")
+        self.assertNotIn('href="/register"', html)
+        self.assertIn('href="/search"', html)
+        self.assertIn("Search profiles", html)
 
     def test_chat_view_without_partner_has_no_conversation_script(self):
         user_id = self._create_user("alice")
