@@ -269,6 +269,28 @@ class ProfileDetailAccessTests(ProfileDetailJsonDoesNotLeakEmailTests):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._profile_views_count(), 1)
 
+    def test_profile_page_displays_and_navigates_multiple_photos(self):
+        with self.app.app_context():
+            execute(
+                "INSERT INTO photos (user_id, url, is_profile_photo) VALUES (?, ?, ?)",
+                (self.bob_id, "/uploads/primary.jpg", 1),
+            )
+            execute(
+                "INSERT INTO photos (user_id, url, is_profile_photo) VALUES (?, ?, ?)",
+                (self.bob_id, "/uploads/other.jpg", 0),
+            )
+        self._login_and_get_token("alice")
+
+        response = self.client.get(f"/profile/{self.bob_id}")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('src="/uploads/primary.jpg"', body)
+        self.assertIn('src="/uploads/other.jpg"', body)
+        self.assertIn('data-bs-slide="prev"', body)
+        self.assertIn('data-bs-slide="next"', body)
+        self.assertIn('data-bs-slide-to="1"', body)
+
     def test_json_detail_of_another_user_has_no_coordinates(self):
         self._login_and_get_token("alice")
 
