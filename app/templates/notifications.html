@@ -5,6 +5,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Notifications</h1>
         <form method="post" action="{{ url_for('notifications.mark_notifications_read') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline-danger">Mark all read</button>
         </form>
     </div>

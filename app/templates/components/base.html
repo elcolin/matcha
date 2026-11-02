@@ -3,6 +3,8 @@
     <head>
         <meta charset="UTF-8">
         <title>{% block title %}Matcha{% endblock %}</title>
+        <link rel="icon" type="image/png"
+                href="{{ url_for('static', filename='favicon.png') }}?v=2">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <!-- Bootstrap -->
@@ -31,12 +33,9 @@
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item"><a class="nav-link" href="{{ url_for("main.home") }}">Home</a></li>
                         {% if current_user %}
-                            {#
-                  Browse/Search/Chat/Notifications pages don't have routes yet
-                  on this branch. Wire these up once match.browse_view,
-                  match.search_view, chat.chat_view and a notifications page
-                  exist (see app/match/routes.py, app/chat/routes.py).
-                #}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('search.search_view') }}">Search</a>
+                            </li>
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('notifications.notifications_view') }}">
                         Notifications
@@ -93,7 +92,7 @@
 
   async function refreshUnreadBadge() {
     try {
-      const response = await fetch('/notifications/unread-count');
+      const response = await fetch({{ url_for('notifications.unread_notifications_count') | tojson }});
       if (!response.ok) return;
       const data = await response.json();
       const badge = document.getElementById('notif-badge');

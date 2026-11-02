@@ -17,7 +17,7 @@ class UserUpdater():
             return None
 
         try:
-            valid = validate_email(new_email)
+            valid = validate_email(new_email, check_deliverability=False)
             new_email = valid.normalized  # cleaned-up version
         except EmailNotValidError as e:
             raise APIError(str(e))

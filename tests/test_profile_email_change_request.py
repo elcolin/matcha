@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from app.config import Config
 
 
-def _fake_validate_email(email):
+def _fake_validate_email(email, **kwargs):
     """Stand-in for email_validator.validate_email that skips the real DNS
     deliverability check (unavailable/flaky in tests) but mirrors the
     normalization (lowercasing) behavior request_email_change relies on."""
@@ -109,6 +109,8 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         mock_send_email.assert_not_called()
+        followed = self.client.get(response.headers["Location"]).get_data(as_text=True)
+        self.assertNotIn("a confirmation email has been sent", followed)
 
         from app.db import query_one
 

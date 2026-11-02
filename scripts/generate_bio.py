@@ -6,8 +6,10 @@ MODELS = [
     "Qwen/Qwen2.5-0.5B-Instruct", 
     "TinyLlama/TinyLlama-1.1B-Chat-v1.0"]
 
-tokenizer = AutoTokenizer.from_pretrained(MODELS[1])
-model = AutoModelForCausalLM.from_pretrained(MODELS[1])
+_model = None
+_tokenizer = None
+_model_index = 0
+
 prompt = (
     "Write short, casual dating bio in first person as a bird. "
     "Do not mention its name, species, or location."
@@ -15,7 +17,8 @@ prompt = (
     "Output only the bio."
 )
 
-def generate(model=model, tokenizer=tokenizer, prompt=prompt):
+
+def generate(model, tokenizer, prompt=prompt):
     messages = [
         {"role": "user", "content": prompt}
     ]
@@ -73,13 +76,27 @@ def is_valid(text):
         and not any(text_lower.startswith(start) for start in BAD_START)
     )
 
+
 def generate_bio():
-    for _ in range(5):
-        text = generate(model=model, tokenizer=tokenizer, prompt=prompt)
-        print(f"Generated bio: {text}")
-        print(f"Is valid: {is_valid(text)}")
-        if is_valid(text):
-            return text.strip().strip('"').strip("'")
+    global _model, _tokenizer, _model_index
+    while _model_index < len(MODELS):
+        model_name = MODELS[_model_index]
+        try:
+            if _model is None:
+                _tokenizer = AutoTokenizer.from_pretrained(model_name)
+                _model = AutoModelForCausalLM.from_pretrained(model_name)
+
+            for _ in range(5):
+                text = generate(model=_model, tokenizer=_tokenizer, prompt=prompt)
+                valid = is_valid(text)
+                print(f"Generated bio: {text}")
+                print(f"Is valid: {valid}")
+                if valid:
+                    return text.strip().strip('"').strip("'")
+            _model = _tokenizer = None
+            _model_index += 1
+        except Exception as error:
+            print(f"Model {model_name} failed: {error}")
+            _model = _tokenizer = None
+            _model_index += 1
     return None
-
-

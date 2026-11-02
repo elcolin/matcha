@@ -3,11 +3,16 @@ import sys
 import random
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
+import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from faker import Faker
 from app.config import UserConfig
 from app import create_app
 from app.db import execute
+
+API_IMAGES1 = os.getenv("API_IMAGES1")
+PLACEHOLDER_PATH = os.getenv("PLACEHOLDER_PATH", "/static/images/")
 
 """
 Usage:
@@ -27,8 +32,22 @@ def random_last_seen(created_at: datetime):
     return min(created_at + timedelta(days=random.randint(0, 700)), datetime.now())
 
 
+def next_user_id():
+    return execute(
+        """
+        SELECT COALESCE(MAX(id), 0) + 1
+        FROM (
+            SELECT id FROM users
+            UNION ALL
+            SELECT user_id AS id FROM profiles
+        )
+        """
+    ).fetchone()[0]
+
+
 def generate_user(max_attempts: int = 10):
     for attempt in range(max_attempts):
+        user_id = next_user_id()
         first = fake.first_name()
         last = fake.last_name()
         email = fake.unique.email()
@@ -41,10 +60,11 @@ def generate_user(max_attempts: int = 10):
         try:
             cur = execute(
                 """INSERT INTO users
-                   (email, username, last_name, first_name, password_hash,
+                   (id, email, username, last_name, first_name, password_hash,
                     email_verified, created_at, last_seen_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
+                    user_id,
                     email,
                     username,
                     last,
@@ -57,7 +77,7 @@ def generate_user(max_attempts: int = 10):
             )
 
             return {
-                "id": cur.lastrowid,
+                "id": user_id,
                 "email": email,
                 "username": username,
                 "first_name": first,
@@ -75,13 +95,13 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
-
-
 def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     if ai:
         try:
             from generate_bio import generate_bio
             bio = generate_bio()
+            if not bio:
+                bio = fake.paragraph(nb_sentences=3)
         except Exception:
             bio = fake.paragraph(nb_sentences=3)
     else:
@@ -93,7 +113,7 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     popularity_score = random.randint(0, 5)
     updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
-    latitude_raw, longitude_raw, city, country, _timezone = fake.local_latlng(country_code="FR")
+    latitude_raw, longitude_raw, city, _country, _timezone = fake.local_latlng(country_code="FR")
     latitude = float(latitude_raw)
     longitude = float(longitude_raw)
     jitter_lat = latitude + random.uniform(-0.03, 0.03)
@@ -104,17 +124,16 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
 
     execute(
         """INSERT INTO profiles
-           (user_id, gender, sexual_preference, bio, city, country, neighborhood,
+           (user_id, gender, sexual_preference, bio, city, neighborhood,
             latitude, longitude, location_consent_gps, popularity_score,
             age, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             gender,
             sexual_preference,
             bio,
             city,
-            country,
             neighborhood,
             latitude,
             longitude,
@@ -191,16 +210,71 @@ def create_profiles(users, ai: bool = False):
     for user in users:
         generate_profile(user["id"], user["created_at"], ai=ai)
 
+
+def get_placeholder(count: int):
+    if count <= 0:
+        return []
+
+    url_directory = PLACEHOLDER_PATH.rstrip("/")
+    relative_directory = url_directory.removeprefix("/static/")
+    image_directory = (
+        Path(__file__).resolve().parent.parent / "app" / "static" / relative_directory
+    )
+    if not image_directory.is_dir():
+        return []
+
+    image_files = sorted(
+        path
+        for path in image_directory.iterdir()
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    )
+    if not image_files:
+        return []
+
+    image_urls = [f"{url_directory}/{path.name}" for path in image_files]
+    random.shuffle(image_urls)
+    return (image_urls * (count // len(image_urls) + 1))[:count]
+
+
 def generate_photos(count):
-    return [
-        f"https://loremflickr.com/400/400/bird?lock={random.randint(1, 100000)}"
-        for _ in range(count)
-    ]
+    if count <= 0:
+        return []
+
+    photos = []
+    if API_IMAGES1:
+        try:
+            response = requests.get(
+                API_IMAGES1,
+                params={
+                    "taxon_id": 3,
+                    "has[]": "photos",
+                    "quality_grade": "research",
+                    "per_page": 100,
+                },
+                timeout=5,
+            )
+            response.raise_for_status()
+            photos = [
+                photo["url"].replace("square", "medium")
+                for observation in response.json().get("results", [])
+                for photo in observation.get("photos", [])
+                if photo.get("url")
+            ]
+        except (requests.RequestException, ValueError):
+            pass
+
+    if not photos:
+        photos = get_placeholder(count)
+    return (photos * (count // len(photos) + 1))[:count]
+
 
 def create_photos(users, photos_per_user=5):
     """Create photos for each user (accepts list of user dicts)."""
     total_photos = len(users) * photos_per_user
-    urls = iter(generate_photos(total_photos))
+    photo_urls = generate_photos(total_photos)
+    if not photo_urls:
+        return
+    urls = iter(photo_urls)
 
     for user in users:
         user_id = user["id"]
