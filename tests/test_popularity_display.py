@@ -68,7 +68,7 @@ class PopularityScoreDisplayTests(unittest.TestCase):
         html = resp.get_data(as_text=True)
 
         self.assertEqual(resp.status_code, 200)
-        self.assertRegex(html, r"(?<!\d)0 pts")
+        self.assertRegex(html, r"(?<!\d)0 popularity")
 
     def test_home_page_displays_high_popularity_score(self):
         viewer_id = self._create_user("viewer")
@@ -79,7 +79,7 @@ class PopularityScoreDisplayTests(unittest.TestCase):
         html = resp.get_data(as_text=True)
 
         self.assertEqual(resp.status_code, 200)
-        self.assertRegex(html, r"(?<!\d)142 pts")
+        self.assertRegex(html, r"(?<!\d)142 popularity")
 
     def test_profile_detail_page_displays_popularity_score(self):
         viewer_id = self._create_user("viewer")
