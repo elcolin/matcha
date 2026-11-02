@@ -20,6 +20,10 @@ class APIError(Exception):
         super().__init__(message)
 
 
+class CSRFError(APIError):
+    """Rejected CSRF check: always answered with its status code, never redirected."""
+
+
 def normalize_email(raw: str) -> str:
     """Return the canonical form of an email address: validated, then fully
     lowercased (email_validator only lowercases the domain). Every write and
@@ -92,7 +96,7 @@ def csrf_protect():
         and csrf_token_signature_valid(current_app.config["SECRET_KEY"], session_token)
     )
     if not valid:
-        raise APIError("Invalid or missing CSRF token", 403)
+        raise CSRFError("Invalid or missing CSRF token", 403)
 
 
 def update_popularity(user_id: int):
