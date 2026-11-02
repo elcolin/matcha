@@ -83,16 +83,18 @@
                             </label>
                         </div>
 
-                        <input type="hidden" id="latitude" name="latitude" value="{{ profile.latitude or '' }}">
-                        <input type="hidden" id="longitude" name="longitude" value="{{ profile.longitude or '' }}">
+                        <div id="location-error" class="alert alert-warning py-2" role="alert" hidden></div>
 
-                        <div id="manual-location-fields" class="row g-3">
+                        <input type="hidden" id="latitude" name="latitude" value="{{ '' if profile.latitude is none else profile.latitude }}">
+                        <input type="hidden" id="longitude" name="longitude" value="{{ '' if profile.longitude is none else profile.longitude }}">
+
+                        <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="city">City</label>
                                 <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="neighborhood">Neighborhood</label>
+                                <label class="form-label" for="neighborhood">Neighborhood (optional)</label>
                                 <input class="form-control" type="text" id="neighborhood" name="neighborhood" value="{{ profile.neighborhood or '' }}">
                             </div>
                         </div>
@@ -153,29 +155,101 @@
 
 {% block extra_scripts %}
 <script>
-  // Toggle manual location fields based on GPS consent, and fill hidden
-  // lat/lng fields via the browser geolocation API when consent is granted.
-  const consentBox = document.getElementById('location_consent_gps');
-  const manualFields = document.getElementById('manual-location-fields');
-  const latInput = document.getElementById('latitude');
-  const lonInput = document.getElementById('longitude');
+  // Location: the browser is asked for the GPS position when the user ticks
+  // the consent box, or on page load only if consent is already given but no
+  // coordinates are stored (otherwise saving would fail). If the position cannot be
+  // obtained, we fall back to the manual city field with an accessible
+  // message. Submitting is blocked while a GPS fix is still pending.
+  (function () {
+    const form = document.getElementById('profile-form');
+    const consentBox = document.getElementById('location_consent_gps');
+    const cityInput = document.getElementById('city');
+    const latInput = document.getElementById('latitude');
+    const lonInput = document.getElementById('longitude');
+    const errorBox = document.getElementById('location-error');
+    const GPS_ERROR_MESSAGES = {
+      1: 'Location access was denied. Please enter your city manually.',
+      2: 'Your position is unavailable. Please enter your city manually.',
+      3: 'Locating you took too long. Please enter your city manually.',
+    };
+    let pendingRequest = 0; // id of the GPS request in flight, 0 if none
+    let lastRequest = 0;
 
-  function syncLocationUI() {
-    if (consentBox.checked) {
-      manualFields.querySelectorAll('input').forEach(i => i.required = false);
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
+    function showLocationError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
+    function clearLocationError() {
+      errorBox.textContent = '';
+      errorBox.hidden = true;
+    }
+
+    function clearCoords() {
+      latInput.value = '';
+      lonInput.value = '';
+    }
+
+    function syncRequired() {
+      // Only the city is mandatory, and only in manual mode.
+      cityInput.required = !consentBox.checked;
+    }
+
+    function fallBackToManual(message) {
+      pendingRequest = 0;
+      consentBox.checked = false;
+      clearCoords();
+      syncRequired();
+      showLocationError(message);
+      cityInput.focus();
+    }
+
+    function requestPosition() {
+      clearCoords();
+      if (!navigator.geolocation) {
+        fallBackToManual('Your browser does not support geolocation. Please enter your city manually.');
+        return;
+      }
+      const requestId = ++lastRequest;
+      pendingRequest = requestId;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (pendingRequest !== requestId) return; // consent withdrawn meanwhile
+          pendingRequest = 0;
           latInput.value = pos.coords.latitude;
           lonInput.value = pos.coords.longitude;
-        });
-      }
-    } else {
-      manualFields.querySelectorAll('input').forEach(i => i.required = true);
+        },
+        (err) => {
+          if (pendingRequest !== requestId) return;
+          fallBackToManual(GPS_ERROR_MESSAGES[err.code] || GPS_ERROR_MESSAGES[2]);
+        },
+        { timeout: 15000, maximumAge: 600000 }
+      );
     }
-  }
 
-  consentBox.addEventListener('change', syncLocationUI);
-  syncLocationUI();
+    consentBox.addEventListener('change', () => {
+      clearLocationError();
+      syncRequired();
+      if (consentBox.checked) {
+        requestPosition();
+      } else {
+        pendingRequest = 0;
+        clearCoords();
+      }
+    });
+
+    form.addEventListener('submit', (event) => {
+      if (pendingRequest) {
+        event.preventDefault();
+        showLocationError('Still locating you, please wait a moment and save again.');
+      }
+    });
+
+    syncRequired();
+    if (consentBox.checked && (latInput.value === '' || lonInput.value === '')) {
+      requestPosition();
+    }
+  })();
 
   // Client-side size check (the server enforces MAX_CONTENT_LENGTH anyway).
   const photoForm = document.getElementById('photo-form');
@@ -195,5 +269,6 @@
       }
     });
   }
+
 </script>
 {% endblock %}

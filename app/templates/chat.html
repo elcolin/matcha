@@ -138,7 +138,7 @@
   // Let the server know this conversation is actively being viewed, so the
   // recipient doesn't get a redundant notification for messages they see live.
   function pingPresence() {
-    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST' });
+    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
   }
   pingPresence();
   setInterval(pingPresence, 8000);

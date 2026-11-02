@@ -13,8 +13,42 @@ jobs:
       fail-fast: false
       matrix:
         test-module:
-          - tests.test_security
+          - tests.test_auth_email_change
+          - tests.test_auth_email_errors
+          - tests.test_auth_lockout
+          - tests.test_auth_resend_verification
+          - tests.test_auth_reset
+          - tests.test_chat
+          - tests.test_csrf
+          - tests.test_email_html_escape
+          - tests.test_flash_xss
+          - tests.test_generate_users
+          - tests.test_match
+          - tests.test_match_routes
           - tests.test_notification
+          - tests.test_notifications
+          - tests.test_online_status
+          - tests.test_online_status_e2e
+          - tests.test_online_status_integration
+          - tests.test_popularity_display
+          - tests.test_profile_data
+          - tests.test_profile_edit_link
+          - tests.test_profile_edit_location
+          - tests.test_profile_email_change_request
+          - tests.test_profile_geolocation
+          - tests.test_profile_location_display
+          - tests.test_profile_payload
+          - tests.test_profile_photo_delete
+          - tests.test_profile_photos
+          - tests.test_profile_report
+          - tests.test_profile_update
+          - tests.test_registration
+          - tests.test_search_routes
+          - tests.test_security
+          - tests.test_template_csrf
+          - tests.test_templates_urls
+          - tests.test_url_map
+          - tests.test_utils
 
     steps:
       - name: Checkout repository

@@ -109,6 +109,8 @@ class ProfileEmailChangeRequestTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         mock_send_email.assert_not_called()
+        followed = self.client.get(response.headers["Location"]).get_data(as_text=True)
+        self.assertNotIn("a confirmation email has been sent", followed)
 
         from app.db import query_one
 

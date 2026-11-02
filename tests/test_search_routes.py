@@ -3,7 +3,28 @@ import secrets
 import tempfile
 import unittest
 
+from werkzeug.datastructures import MultiDict
+
 from app.config import Config
+from app.search.routes import _filter
+
+
+class FilterTagsTests(unittest.TestCase):
+    def test_no_tag_filter_keeps_all_items(self):
+        items = [{"tags": ["coffee"]}, {"tags": []}]
+
+        self.assertEqual(_filter(items, MultiDict()), items)
+
+    def test_keeps_only_items_matching_all_required_tags_case_insensitively(self):
+        items = [
+            {"id": 1, "tags": ["Coffee", "Travel"]},
+            {"id": 2, "tags": ["coffee"]},
+            {"id": 3, "tags": ["music"]},
+        ]
+
+        result = _filter(items, MultiDict({"tags": "Coffee,travel"}))
+
+        self.assertEqual([i["id"] for i in result], [1])
 
 
 class SearchRouteTests(unittest.TestCase):

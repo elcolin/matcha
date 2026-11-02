@@ -156,6 +156,36 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
             )
         self.assertEqual(len(rows), 1)
 
+    def test_presence_ping_without_csrf_token_is_rejected(self):
+        a_id = self._create_user("csrfless")
+        b_id = self._create_user("partner")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+
+        resp = self.client.post(f"/chat/{b_id}/presence")
+        self.assertEqual(resp.status_code, 403)
+
+        from app.db import query_all
+
+        with self.app.app_context():
+            rows = query_all("SELECT * FROM chat_presence WHERE user_id = ?", (a_id,))
+        self.assertEqual(rows, [])
+
+    def test_chat_page_presence_ping_sends_csrf_header(self):
+        import re
+
+        a_id = self._create_user("pinger")
+        b_id = self._create_user("pinged")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+
+        html = self.client.get(f"/chat/view/{b_id}").get_data(as_text=True)
+
+        ping = re.search(r"function pingPresence\(\)\s*\{(.*?)\n  \}", html, re.DOTALL)
+        self.assertIsNotNone(ping)
+        self.assertIn("CHAT_PRESENCE_URL", ping.group(1))
+        self.assertIn("'X-CSRFToken': csrfToken", ping.group(1))
+
     def test_presence_ping_requires_login(self):
         a_id = self._create_user("iris")
         b_id = self._create_user("jack")
