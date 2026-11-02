@@ -195,6 +195,19 @@ class ProfileDetailJsonDoesNotLeakEmailTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("bob@example.com", response.get_data(as_text=True))
 
+    def test_html_profile_displays_gender_when_set(self):
+        from app.db import query_one
+
+        with self.app.app_context():
+            bob_id = query_one("SELECT id FROM users WHERE username = 'bob'")["id"]
+            execute("UPDATE profiles SET gender = 'non-binary' WHERE user_id = ?", (bob_id,))
+
+        self._login_and_get_token("alice")
+        response = self.client.get(f"/profile/{bob_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Gender: Non-binary", response.get_data(as_text=True))
+
 
 class ProfileDetailAccessTests(ProfileDetailJsonDoesNotLeakEmailTests):
     """Issue #82: /profile/<id> requires authentication and never exposes

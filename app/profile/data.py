@@ -4,6 +4,7 @@ from app.db import execute, query_all, query_one
 from email_validator import EmailNotValidError
 from app.security import issue_signed_token, utcnow_iso
 from app.utils import APIError, normalize_email
+from email_validator import validate_email
 
 class UserUpdater():
     def is_current_email(user_id, email):
