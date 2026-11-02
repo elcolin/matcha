@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 from functools import wraps
 from flask import current_app, g, request, session
 
@@ -123,3 +124,30 @@ def is_match(user_a: int, user_b: int):
     first = query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (user_a, user_b))
     second = query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (user_b, user_a))
     return bool(first and second)
+
+
+_TIME_AGO_UNITS = (
+    ("year", 365 * 24 * 3600),
+    ("month", 30 * 24 * 3600),
+    ("day", 24 * 3600),
+    ("hour", 3600),
+    ("minute", 60),
+)
+
+
+def time_ago(iso_value, now=None):
+    """Format an ISO timestamp as '2 hours ago'; None when missing or invalid."""
+    if not iso_value:
+        return None
+    try:
+        moment = datetime.fromisoformat(iso_value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    seconds = ((now or datetime.now(timezone.utc)) - moment).total_seconds()
+    for unit, size in _TIME_AGO_UNITS:
+        count = int(seconds // size)
+        if count >= 1:
+            return f"{count} {unit}{'s' if count > 1 else ''} ago"
+    return "just now"

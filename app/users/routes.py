@@ -2,7 +2,7 @@ from flask import Blueprint, g, jsonify
 
 from app.db import query_one
 from app.profile.routes import _compute_online
-from app.utils import APIError, is_blocked_between, is_match, login_required
+from app.utils import APIError, is_blocked_between, is_match, login_required, time_ago
 
 users_bp = Blueprint("users", __name__, url_prefix="/users")
 
@@ -31,5 +31,6 @@ def online_status(id):
         {
             "online": _compute_online(row["online_until"]),
             "last_seen_at": row["last_seen_at"],
+            "last_seen_ago": time_ago(row["last_seen_at"]),
         }
     )

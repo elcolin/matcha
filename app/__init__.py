@@ -15,7 +15,7 @@ from app.notifications.routes import notifications_bp
 from app.search.routes import search_bp
 
 from app.db import close_db, init_db, query_one, execute
-from app.utils import csrf_protect, get_csrf_token
+from app.utils import csrf_protect, get_csrf_token, time_ago
 
 load_dotenv()
 
@@ -23,6 +23,7 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
     app.config.from_object("app.config.Config")
+    app.add_template_filter(time_ago)
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)

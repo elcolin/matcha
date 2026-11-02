@@ -26,7 +26,13 @@
                         <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
                             <p class="online-status mb-0">
                                 <span class="online-indicator {{ 'online' if profile.online else 'offline' }}"></span>
-                                {{ 'Online' if profile.online else 'Offline' }}
+                                {% if profile.online %}
+                                    Online
+                                {% elif profile.last_seen_at %}
+                                    Last seen {{ profile.last_seen_at|time_ago }}
+                                {% else %}
+                                    Offline
+                                {% endif %}
                             </p>
                             {% if profile.city %}
                                 <p class="text-muted mb-0">📍 {{ profile.city }}</p>
