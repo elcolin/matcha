@@ -8,3 +8,4 @@ CLAUDE.md
 .claude/
 .claudian/
 .vscode/
+.vscode/test_failures.txt
