@@ -113,18 +113,20 @@ class GenerateBioTests(unittest.TestCase):
         tokenizer = MagicMock()
         model = MagicMock()
 
+        load_tokenizer = MagicMock(return_value=tokenizer)
+        load_model = MagicMock(return_value=model)
         with (
             patch.object(self.bio_generator, "MODELS", ["model-a"]),
             patch.object(
-                self.bio_generator.AutoTokenizer,
-                "from_pretrained",
-                return_value=tokenizer,
-            ) as load_tokenizer,
+                self.bio_generator,
+                "AutoTokenizer",
+                MagicMock(from_pretrained=load_tokenizer),
+            ),
             patch.object(
-                self.bio_generator.AutoModelForCausalLM,
-                "from_pretrained",
-                return_value=model,
-            ) as load_model,
+                self.bio_generator,
+                "AutoModelForCausalLM",
+                MagicMock(from_pretrained=load_model),
+            ),
             patch.object(
                 self.bio_generator, "generate", return_value=expected_bio
             ) as mock_generate,
@@ -144,18 +146,20 @@ class GenerateBioTests(unittest.TestCase):
         tokenizer = MagicMock()
         model = MagicMock()
 
+        load_tokenizer = MagicMock(return_value=tokenizer)
+        load_model = MagicMock(return_value=model)
         with (
             patch.object(self.bio_generator, "MODELS", ["model-a", "model-b"]),
             patch.object(
-                self.bio_generator.AutoTokenizer,
-                "from_pretrained",
-                return_value=tokenizer,
-            ) as load_tokenizer,
+                self.bio_generator,
+                "AutoTokenizer",
+                MagicMock(from_pretrained=load_tokenizer),
+            ),
             patch.object(
-                self.bio_generator.AutoModelForCausalLM,
-                "from_pretrained",
-                return_value=model,
-            ) as load_model,
+                self.bio_generator,
+                "AutoModelForCausalLM",
+                MagicMock(from_pretrained=load_model),
+            ),
             patch.object(
                 self.bio_generator,
                 "generate",
@@ -176,18 +180,20 @@ class GenerateBioTests(unittest.TestCase):
         tokenizer = MagicMock()
         model = MagicMock()
 
+        load_tokenizer = MagicMock(side_effect=[RuntimeError("model-a is unavailable"), tokenizer])
+        load_model = MagicMock(return_value=model)
         with (
             patch.object(self.bio_generator, "MODELS", ["model-a", "model-b"]),
             patch.object(
-                self.bio_generator.AutoTokenizer,
-                "from_pretrained",
-                side_effect=[RuntimeError("model-a is unavailable"), tokenizer],
-            ) as load_tokenizer,
+                self.bio_generator,
+                "AutoTokenizer",
+                MagicMock(from_pretrained=load_tokenizer),
+            ),
             patch.object(
-                self.bio_generator.AutoModelForCausalLM,
-                "from_pretrained",
-                return_value=model,
-            ) as load_model,
+                self.bio_generator,
+                "AutoModelForCausalLM",
+                MagicMock(from_pretrained=load_model),
+            ),
             patch.object(self.bio_generator, "generate", return_value=expected_bio),
             patch.object(self.bio_generator, "is_valid", return_value=True),
         ):
