@@ -6,12 +6,26 @@ but the test modules in this package import `DBTestCase` from here.
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from flask import Flask
 
 from app.db import close_db, execute, get_db
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "app" / "schema.sql"
+
+
+def fake_validate_email(email, **kwargs):
+    """Offline stand-in for email_validator.validate_email.
+
+    Mirrors the real normalization: only the domain is lowercased, the local
+    part keeps its casing. Lowercasing the whole address here would hide any
+    missing canonicalization in the code under test (issue #98).
+    """
+    local, _, domain = email.strip().rpartition("@")
+    result = MagicMock()
+    result.normalized = f"{local}@{domain.lower()}"
+    return result
 
 
 class DBTestCase(unittest.TestCase):

@@ -1,6 +1,7 @@
 import secrets
 from datetime import datetime, timezone
 from functools import wraps
+from email_validator import validate_email
 from flask import current_app, g, request, session
 
 from app.db import execute, query_one
@@ -17,6 +18,17 @@ class APIError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
+
+
+def normalize_email(raw: str) -> str:
+    """Return the canonical form of an email address: validated, then fully
+    lowercased (email_validator only lowercases the domain). Every write and
+    lookup on users.email / email_changes.new_email goes through it so case
+    variants map to the same account (issue #98).
+
+    Raises email_validator.EmailNotValidError on an invalid address.
+    """
+    return validate_email(raw.strip(), check_deliverability=False).normalized.lower()
 
 
 def login_required(fn):
