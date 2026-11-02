@@ -76,6 +76,24 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
     return token
 
 
+def _send_existing_account_email(email: str):
+    reset_link = url_for("auth.request_password_reset", _external=True)
+    try:
+        send_email(
+            email,
+            "Sign-up attempt on your Matcha account",
+            f"""
+            <p>Someone tried to create a Matcha account with this email address,
+            but you already have one.</p>
+            <p>If it was you, log in with your username or
+            <a href="{reset_link}">reset your password</a>.</p>
+            <p>If it was not you, you can ignore this email.</p>
+            """,
+        )
+    except Exception:
+        current_app.logger.exception("Failed to send existing-account notice")
+
+
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if g.current_user:
@@ -104,20 +122,29 @@ def register():
     if not is_ok:
         return render_template("register.html", error=reason)
 
+    username = data["username"].strip()
+    # Usernames are public (shown on profiles), so reporting a taken one leaks nothing.
+    if query_one("SELECT 1 FROM users WHERE username = ?", (username,)):
+        return render_template("register.html", error="Username is already taken")
+
     try:
         cur = execute(
             "INSERT INTO users (email, username, last_name, first_name, password_hash) VALUES (?, ?, ?, ?, ?)",
-            (email, data["username"].strip(),
+            (email, username,
              data["last_name"].strip(), data["first_name"].strip(),
              hash_password(password)),
         )
-    except Exception:
-        return render_template("register.html", error="Email or username already exists")
+    except sqlite3.IntegrityError:
+        cur = None
 
-    user_id = cur.lastrowid
-    _ensure_profile_exists(user_id)
-
-    send_verification_email(user_id, email, data["first_name"].strip())
+    if cur is not None:
+        user_id = cur.lastrowid
+        _ensure_profile_exists(user_id)
+        send_verification_email(user_id, email, data["first_name"].strip())
+    else:
+        # Email already registered: answer exactly like a successful sign-up so the
+        # form cannot be used to enumerate accounts, and warn the real owner instead.
+        _send_existing_account_email(email)
 
     return render_template(
         "register.html",

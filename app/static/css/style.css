@@ -47,10 +47,16 @@ body {
     overflow: hidden;
 }
 
-.profile-img {
+.profile-card .profile-img {
     width: 100%;
-    height: 350px;
+    height: 480px;
     object-fit: cover;
+}
+
+@media (max-width: 576px) {
+    .profile-card .profile-img {
+        height: 360px;
+    }
 }
 
 .tag {

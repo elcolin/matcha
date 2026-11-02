@@ -183,6 +183,61 @@ class RegistrationFlowTests(unittest.TestCase):
         self.assertIn("Account created", response.get_data(as_text=True))
         mock_send_email.assert_called_once()
 
+    def _register(self, email, username):
+        return self.client.post(
+            "/register",
+            data={
+                "email": email,
+                "username": username,
+                "first_name": "New",
+                "last_name": "User",
+                "password": "J8#qL2!vX9@p",
+                "confirm": "J8#qL2!vX9@p",
+                "csrf_token": self._get_csrf_token(),
+            },
+        )
+
+    @patch("app.auth.routes.send_email")
+    def test_register_with_existing_email_does_not_reveal_account(self, mock_send_email):
+        self._create_verified_user("existing")
+        counts_before = self._counts()
+
+        taken = self._register("existing@example.com", "someoneelse")
+        fresh = self._register("brandnew@example.com", "brandnew")
+
+        taken_html = taken.get_data(as_text=True)
+        self.assertEqual(taken.status_code, 200)
+        self.assertIn("Account created! Check existing@example.com", taken_html)
+        self.assertNotIn("already", taken_html)
+        self.assertEqual(
+            taken_html.replace("existing@example.com", "X"),
+            fresh.get_data(as_text=True).replace("brandnew@example.com", "X"),
+        )
+        self.assertEqual(self._counts()[0], counts_before[0] + 1)
+
+    @patch("app.auth.routes.send_email")
+    def test_register_with_existing_email_notifies_account_owner(self, mock_send_email):
+        self._create_verified_user("existing")
+
+        self._register("existing@example.com", "someoneelse")
+
+        mock_send_email.assert_called_once()
+        to, _subject, html = mock_send_email.call_args.args
+        self.assertEqual(to, "existing@example.com")
+        self.assertIn("/password-reset/request", html)
+        self.assertNotIn("/verify-email/", html)
+
+    @patch("app.auth.routes.send_email")
+    def test_register_with_taken_username_reports_it(self, mock_send_email):
+        self._create_verified_user("existing")
+        counts_before = self._counts()
+
+        response = self._register("other@example.com", "existing")
+
+        self.assertIn("Username is already taken", response.get_data(as_text=True))
+        self.assertEqual(self._counts(), counts_before)
+        mock_send_email.assert_not_called()
+
 
     def _register(self, email, username):
         return self.client.post(
@@ -207,8 +262,8 @@ class RegistrationFlowTests(unittest.TestCase):
         response = self._register("Taken@Example.com", "someoneelse")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Email or username already exists", response.get_data(as_text=True))
-        mock_send_email.assert_not_called()
+        self.assertIn("Account created! Check taken@example.com for your verification email.", response.get_data(as_text=True))
+        mock_send_email.assert_called_once()
         with self.app.app_context():
             rows = query_all("SELECT id FROM users WHERE username = ?", ("someoneelse",))
         self.assertEqual(rows, [])

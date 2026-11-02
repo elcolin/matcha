@@ -143,6 +143,7 @@ class OnlineStatusIntegrationTests(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["online"])
         self.assertIn("last_seen_at", data)
+        self.assertIn("last_seen_ago", data)
 
     def test_users_online_status_endpoint_returns_offline_for_unknown_activity(self):
         viewer = self._create_user("viewer5")
@@ -154,6 +155,7 @@ class OnlineStatusIntegrationTests(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.get_json()["online"])
+        self.assertIsNone(resp.get_json()["last_seen_ago"])
 
     def test_users_online_status_endpoint_returns_404_for_unknown_user(self):
         viewer = self._create_user("viewer6")

@@ -30,7 +30,7 @@
                                     {% if active.online %}
                                         Online now
                                     {% elif active.last_seen_at %}
-                                        Last seen at {{ active.last_seen_at }}
+                                        Last seen {{ active.last_seen_at|time_ago }}
                                     {% else %}
                                         Offline
                                     {% endif %}
@@ -159,8 +159,8 @@
       onlineIndicator.classList.toggle('offline', !data.online);
       if (data.online) {
         onlineLabel.textContent = 'Online now';
-      } else if (data.last_seen_at) {
-        onlineLabel.textContent = `Last seen at ${data.last_seen_at}`;
+      } else if (data.last_seen_ago) {
+        onlineLabel.textContent = `Last seen ${data.last_seen_ago}`;
       } else {
         onlineLabel.textContent = 'Offline';
       }
