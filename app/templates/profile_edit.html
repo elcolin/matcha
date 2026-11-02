@@ -63,12 +63,6 @@
                             <label class="form-label" for="email">Email</label>
                             <input class="form-control" type="text" id="email" name="email"
                                    value="{{ profile.email or '' }}" placeholder="you@example.com">
-                            {% if pending_email_change %}
-                            <div class="form-text">
-                                A change to {{ pending_email_change.new_email }} is awaiting
-                                confirmation (check that inbox).
-                            </div>
-                            {% endif %}
                         </div>
 
                         <hr>
