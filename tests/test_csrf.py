@@ -199,6 +199,17 @@ class CsrfProtectedAuthenticatedFormsTests(unittest.TestCase):
         html = self.client.get("/profile/edit").get_data(as_text=True)
         return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
 
+    def test_notifications_page_mark_read_form_includes_csrf_token(self):
+        self._login_and_get_token("reporter")
+
+        html = self.client.get("/notifications/view").get_data(as_text=True)
+
+        form = re.search(
+            r'<form[^>]*action="/notifications/mark-read"[^>]*>(.*?)</form>', html, re.DOTALL
+        )
+        self.assertIsNotNone(form)
+        self.assertRegex(form.group(1), r'name="csrf_token" value="[^"]+"')
+
     def test_profile_edit_post_without_csrf_token_is_rejected(self):
         self._login_and_get_token("reporter")
 

@@ -1,5 +1,8 @@
+import sqlite3
 import unittest
+from datetime import datetime, timedelta, timezone
 
+from email_validator import EmailNotValidError
 from flask import g
 
 from app.db import execute, query_one
@@ -9,9 +12,28 @@ from app.utils import (
     is_blocked_between,
     is_match,
     login_required,
+    normalize_email,
+    time_ago,
     update_popularity,
 )
 from tests.helpers import DBTestCase
+
+
+
+class NormalizeEmailTests(unittest.TestCase):
+    def test_lowercases_local_part_and_domain(self):
+        self.assertEqual(normalize_email("Taken@Example.COM"), "taken@example.com")
+
+    def test_invalid_address_raises(self):
+        with self.assertRaises(EmailNotValidError):
+            normalize_email("not-an-email")
+
+
+class EmailUniquenessSchemaTests(DBTestCase):
+    def test_case_variant_of_existing_email_violates_unique_constraint(self):
+        self.create_user(email="a@x.com", username="first")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.create_user(email="A@x.com", username="second")
 
 
 class UpdatePopularityTests(DBTestCase):
@@ -133,6 +155,38 @@ class LoginRequiredTests(DBTestCase):
             return "ok"
 
         self.assertEqual(protected(), "ok")
+
+
+class TimeAgoTests(unittest.TestCase):
+    NOW = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
+
+    def _ago(self, **delta):
+        return time_ago((self.NOW - timedelta(**delta)).isoformat(), now=self.NOW)
+
+    def test_missing_or_invalid_value_returns_none(self):
+        self.assertIsNone(time_ago(None, now=self.NOW))
+        self.assertIsNone(time_ago("", now=self.NOW))
+        self.assertIsNone(time_ago("not a date", now=self.NOW))
+
+    def test_under_a_minute_is_just_now(self):
+        self.assertEqual(self._ago(seconds=30), "just now")
+
+    def test_future_timestamp_is_just_now(self):
+        self.assertEqual(self._ago(seconds=-30), "just now")
+
+    def test_units_and_pluralization(self):
+        self.assertEqual(self._ago(minutes=1), "1 minute ago")
+        self.assertEqual(self._ago(minutes=5), "5 minutes ago")
+        self.assertEqual(self._ago(hours=1), "1 hour ago")
+        self.assertEqual(self._ago(hours=2, minutes=59), "2 hours ago")
+        self.assertEqual(self._ago(days=1), "1 day ago")
+        self.assertEqual(self._ago(days=2), "2 days ago")
+        self.assertEqual(self._ago(days=60), "2 months ago")
+        self.assertEqual(self._ago(days=400), "1 year ago")
+
+    def test_naive_timestamp_is_treated_as_utc(self):
+        naive = (self.NOW - timedelta(hours=3)).replace(tzinfo=None).isoformat()
+        self.assertEqual(time_ago(naive, now=self.NOW), "3 hours ago")
 
 
 if __name__ == "__main__":

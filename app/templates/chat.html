@@ -9,6 +9,8 @@
                     {% for m in matches %}
                         <a href="{{ url_for('chat.chat_view', user_id=m.id) }}"
                            class="list-group-item list-group-item-action {% if active and active.id == m.id %}active{% endif %}">
+                            <span class="online-indicator {{ 'online' if m.online else 'offline' }}"
+                                  title="{{ 'Online' if m.online else 'Offline' }}"></span>
                             {{ m.first_name }} {{ m.last_name }} (@{{ m.username }})
                         </a>
                     {% else %}
@@ -19,7 +21,22 @@
             <div class="col-md-8">
                 {% if active %}
                     <div class="card shadow-sm">
-                        <div class="card-header">Conversation with {{ active.first_name }} {{ active.last_name }}</div>
+                        <div class="card-header">
+                            Conversation with {{ active.first_name }} {{ active.last_name }}
+                            <p class="online-status mb-0" id="partner-online-status">
+                                <span id="partner-online-indicator"
+                                      class="online-indicator {{ 'online' if active.online else 'offline' }}"></span>
+                                <span id="partner-online-label">
+                                    {% if active.online %}
+                                        Online now
+                                    {% elif active.last_seen_at %}
+                                        Last seen {{ active.last_seen_at|time_ago }}
+                                    {% else %}
+                                        Offline
+                                    {% endif %}
+                                </span>
+                            </p>
+                        </div>
                         <div class="card-body"
                              id="messages"
                              style="height: 400px;
@@ -52,6 +69,18 @@
   const form = document.getElementById('send-form');
   const input = document.getElementById('message-input');
 
+  // Endpoint URLs generated server-side with a 0 placeholder for the partner id.
+  const CHAT_CONVERSATION_URL = {{ url_for('chat.conversation', user_id=0) | tojson }};
+  const CHAT_SEND_URL = {{ url_for('chat.send_message', user_id=0) | tojson }};
+  const CHAT_PRESENCE_URL = {{ url_for('chat.ping_presence', user_id=0) | tojson }};
+  const CHAT_ONLINE_STATUS_URL = {{ url_for('users.online_status', id=0) | tojson }};
+  const CHAT_STREAM_URL = {{ url_for('chat.stream_events') | tojson }};
+
+  // Replace the "/0" id segment of a URL template with the partner id.
+  function partnerUrl(template) {
+    return template.replace(/\/0(?=\/|$)/, '/' + otherUserId);
+  }
+
   const renderedMessageIds = new Set();
   let lastMessageId = 0;
 
@@ -76,7 +105,7 @@
 
   // Load history once on page load.
   async function loadMessages() {
-      const response = await fetch(`/chat/${otherUserId}`)
+      const response = await fetch(partnerUrl(CHAT_CONVERSATION_URL))
       const rows = await response.json()
       rows.forEach(renderMessage)
   }
@@ -87,7 +116,7 @@
     if (!content) return;
       renderMessage({ sender_id: currentUserId, content });
       input.value = '';
-    fetch(`/chat/${otherUserId}/send`, {
+    fetch(partnerUrl(CHAT_SEND_URL), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({ content }),
@@ -95,7 +124,7 @@
   });
   
   function connectStream() {
-    const stream = new EventSource(`/chat/stream?since=${lastMessageId}`);
+    const stream = new EventSource(`${CHAT_STREAM_URL}?since=${lastMessageId}`);
     stream.addEventListener('message', (event) => {
       const msg = JSON.parse(event.data);
       if (msg.sender_id === otherUserId) {
@@ -109,10 +138,37 @@
   // Let the server know this conversation is actively being viewed, so the
   // recipient doesn't get a redundant notification for messages they see live.
   function pingPresence() {
-    fetch(`/chat/${otherUserId}/presence`, { method: 'POST' });
+    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
   }
   pingPresence();
   setInterval(pingPresence, 8000);
+
+  // Refresh the partner's online indicator without a full page reload, well
+  // under the project's 10s real-time requirement.
+  const ONLINE_POLL_INTERVAL_MS = 5000;
+  const onlineIndicator = document.getElementById('partner-online-indicator');
+  const onlineLabel = document.getElementById('partner-online-label');
+
+  async function refreshPartnerOnlineStatus() {
+    try {
+      const response = await fetch(partnerUrl(CHAT_ONLINE_STATUS_URL));
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!onlineIndicator || !onlineLabel) return;
+      onlineIndicator.classList.toggle('online', data.online);
+      onlineIndicator.classList.toggle('offline', !data.online);
+      if (data.online) {
+        onlineLabel.textContent = 'Online now';
+      } else if (data.last_seen_ago) {
+        onlineLabel.textContent = `Last seen ${data.last_seen_ago}`;
+      } else {
+        onlineLabel.textContent = 'Offline';
+      }
+    } catch (_) {
+      // Network hiccup: keep the last known value, next poll will retry.
+    }
+  }
+  setInterval(refreshPartnerOnlineStatus, ONLINE_POLL_INTERVAL_MS);
         </script>
     {% endif %}
 {% endblock %}

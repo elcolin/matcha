@@ -47,10 +47,16 @@ body {
     overflow: hidden;
 }
 
-.profile-img {
+.profile-card .profile-img {
     width: 100%;
-    height: 350px;
+    height: 480px;
     object-fit: cover;
+}
+
+@media (max-width: 576px) {
+    .profile-card .profile-img {
+        height: 360px;
+    }
 }
 
 .tag {
@@ -65,4 +71,33 @@ body {
 .action-btn {
     border-radius: 30px;
     padding: 10px 20px;
+}
+
+
+/* =========================
+   ONLINE STATUS INDICATOR
+========================= */
+
+.online-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.online-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #adb5bd;
+}
+
+.online-indicator.online {
+    background-color: #28a745;
+}
+
+.online-indicator.offline {
+    background-color: #adb5bd;
 }

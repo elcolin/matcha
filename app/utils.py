@@ -1,5 +1,7 @@
 import secrets
+from datetime import datetime, timezone
 from functools import wraps
+from email_validator import validate_email
 from flask import current_app, g, request, session
 
 from app.db import execute, query_one
@@ -16,6 +18,21 @@ class APIError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
+
+
+class CSRFError(APIError):
+    """Rejected CSRF check: always answered with its status code, never redirected."""
+
+
+def normalize_email(raw: str) -> str:
+    """Return the canonical form of an email address: validated, then fully
+    lowercased (email_validator only lowercases the domain). Every write and
+    lookup on users.email / email_changes.new_email goes through it so case
+    variants map to the same account (issue #98).
+
+    Raises email_validator.EmailNotValidError on an invalid address.
+    """
+    return validate_email(raw.strip(), check_deliverability=False).normalized.lower()
 
 
 def login_required(fn):
@@ -79,7 +96,7 @@ def csrf_protect():
         and csrf_token_signature_valid(current_app.config["SECRET_KEY"], session_token)
     )
     if not valid:
-        raise APIError("Invalid or missing CSRF token", 403)
+        raise CSRFError("Invalid or missing CSRF token", 403)
 
 
 def update_popularity(user_id: int):
@@ -123,3 +140,30 @@ def is_match(user_a: int, user_b: int):
     first = query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (user_a, user_b))
     second = query_one("SELECT 1 FROM likes WHERE from_user_id = ? AND to_user_id = ?", (user_b, user_a))
     return bool(first and second)
+
+
+_TIME_AGO_UNITS = (
+    ("year", 365 * 24 * 3600),
+    ("month", 30 * 24 * 3600),
+    ("day", 24 * 3600),
+    ("hour", 3600),
+    ("minute", 60),
+)
+
+
+def time_ago(iso_value, now=None):
+    """Format an ISO timestamp as '2 hours ago'; None when missing or invalid."""
+    if not iso_value:
+        return None
+    try:
+        moment = datetime.fromisoformat(iso_value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    seconds = ((now or datetime.now(timezone.utc)) - moment).total_seconds()
+    for unit, size in _TIME_AGO_UNITS:
+        count = int(seconds // size)
+        if count >= 1:
+            return f"{count} {unit}{'s' if count > 1 else ''} ago"
+    return "just now"

@@ -10,8 +10,13 @@
                 <h5 class="card-title mb-4">Login</h5>
                 {% if error %}
                     <div class="alert alert-danger">{{ error }}</div>
+                    {% if unverified %}
+                        <p class="mb-3" style="font-size:0.85rem">
+                            <a href="{{ url_for('auth.resend_verification_email') }}">Resend verification email</a>
+                        </p>
+                    {% endif %}
                 {% endif %}
-                <form method="POST" action="/login">
+                <form method="POST" action="{{ url_for('auth.login') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label">Username</label>
@@ -24,9 +29,9 @@
                     <button type="submit" class="btn btn-danger w-100 mb-3">Login</button>
                 </form>
                 <div class="d-flex justify-content-between">
-                    <a href="/password-reset/request"
+                    <a href="{{ url_for('auth.request_password_reset') }}"
                        class="btn btn-link btn-sm p-0 text-muted">Forgot password?</a>
-                    <a href="/register"       class="btn btn-link btn-sm p-0 text-muted">Create account</a>
+                    <a href="{{ url_for('auth.register') }}"       class="btn btn-link btn-sm p-0 text-muted">Create account</a>
                 </div>
             </div>
         </div>

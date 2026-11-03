@@ -5,26 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-
-COMMON_ENGLISH_PASSWORDS = {
-    "password", "qwerty", "hello", "welcome", "dragon", "football", "baseball",
-    "letmein", "sunshine", "freedom", "superman", "mustang", "monkey", "shadow",
-    "princess", "trustno1", "iloveyou", "admin", "matcha", "passw0rd", "abc123",
-    "123456", "1234567", "12345678", "123456789", "1234567890", "111111", "000000",
-    "asdfgh", "zxcvbn", "qwertyuiop", "starwars", "master", "login", "welcome1",
-    "changeme", "secret", "unknown", "donald", "pokemon", "soccer", "hockey",
-    "computer", "internet", "flower", "summer", "winter", "autumn", "spring",
-    "tigger", "charlie", "michael", "jessica", "daniel", "andrew", "ashley",
-    "pepper", "whatever", "baseball1", "football1", "basketball", "jordan", "maggie",
-    "access", "matrix", "killer", "scooter", "ginger", "michelle", "thunder",
-    "buster", "cookie", "orange", "banana", "qazwsx", "qweasd", "zaq12wsx",
-    "liverpool", "arsenal", "chelsea", "manchester", "freestyle", "lovely",
-    "cheese", "chocolate", "summer2024", "summer2025", "welcome123", "passion",
-    "eagle", "monkey123", "hottie", "cowboy", "corvette", "mercedes", "ferrari",
-    "mustang1", "silver", "golden", "diamond", "abcdef", "abcdefg", "abcdefgh",
-    "hannah", "hunter", "rabbit", "ginger1", "sunshine1", "flower1", "soccer1"
-}
-
+from zxcvbn import zxcvbn
 
 def utcnow_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -47,6 +28,7 @@ def verify_password(password_hash: str, password: str):
 
 
 def validate_password_strength(password: str):
+    #general checks
     if len(password) < 10:
         return False, "Password must be at least 10 characters long"
     if not any(c.isupper() for c in password):
@@ -57,10 +39,24 @@ def validate_password_strength(password: str):
         return False, "Password must contain a digit"
     if not any(c in string.punctuation for c in password):
         return False, "Password must contain a special character"
-
-    lowered = password.strip().lower()
-    if lowered in COMMON_ENGLISH_PASSWORDS:
-        return False, "Password cannot be a common English word"
+    
+    #common english words 
+    res = zxcvbn(password)
+    score = res.get("score", 0)
+    for seq in res.get("sequence", []):
+        if seq.get("pattern") == "dictionary":
+            token = seq.get("token", "")
+            if token:
+                return False, f"Password contains a common word: {token}"
+            return False, "Password contains a common word"
+    
+    #passwoord strength
+    if score < 3:
+        feedback = res.get("feedback") or {}
+        warning = feedback.get("warning") if isinstance(feedback, dict) else None
+        suggestions = feedback.get("suggestions") if isinstance(feedback, dict) else None
+        message = warning or (suggestions[0] if suggestions else "Password is too weak")
+        return False, message
 
     return True, None
 
