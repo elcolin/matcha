@@ -12,15 +12,18 @@ def _filter(items, args):
     max_pop = args.get("max_popularity", type=int)
     city = args.get("city", "").strip().lower()
     required_tags = {t.strip().lower() for t in args.get("tags", "").split(",") if t.strip()}
-
+    
     def ok(p):
-        if min_age is not None and p.get("age", 0) < min_age:
+        age = p.get("age")
+        popularity = p.get("popularity_score") or 0
+
+        if min_age is not None and (age is None or age < min_age):
             return False
-        if max_age is not None and p.get("age", 0) > max_age:
+        if max_age is not None and (age is None or age > max_age):
             return False
-        if min_pop is not None and p.get("popularity_score", 0) < min_pop:
+        if min_pop is not None and popularity < min_pop:
             return False
-        if max_pop is not None and p.get("popularity_score", 0) > max_pop:
+        if max_pop is not None and popularity > max_pop:
             return False
         if city and (p.get("city") or "").lower() != city:
             return False
