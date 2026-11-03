@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,10 +14,17 @@ from scripts.chat_bot_responder import (
     build_bot_history,
     build_reply_prompt,
     generate_bot_reply,
+    BOT_ONLINE_TTL_SECONDS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
     is_bot_username,
+    mark_bot_offline,
+    mark_bot_online,
     needs_bot_reply,
     run,
 )
+from app.db import query_one
+from app.profile.routes import _compute_online
+from tests.helpers import DBTestCase
 
 
 class IsBotUsernameTests(unittest.TestCase):
@@ -264,6 +272,8 @@ class RunAntiLoopGuardTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             run()
 
+    @patch("scripts.chat_bot_responder.mark_bot_offline")
+    @patch("scripts.chat_bot_responder.mark_bot_online")
     @patch("scripts.chat_bot_responder.time.sleep")
     @patch("scripts.chat_bot_responder.insert_bot_message")
     @patch("scripts.chat_bot_responder.generate_bot_reply")
@@ -273,7 +283,7 @@ class RunAntiLoopGuardTests(unittest.TestCase):
     @patch("scripts.chat_bot_responder.check_ollama_available")
     def test_never_replies_to_another_bot(
         self, mock_check, mock_resolve_bots, mock_find_pairs, mock_last_message,
-        mock_generate_reply, mock_insert, mock_sleep,
+        mock_generate_reply, mock_insert, mock_sleep, _mock_online, _mock_offline,
     ):
         self._run_one_cycle(
             "bot_carl", mock_check, mock_resolve_bots, mock_find_pairs,
@@ -282,6 +292,8 @@ class RunAntiLoopGuardTests(unittest.TestCase):
         mock_generate_reply.assert_not_called()
         mock_insert.assert_not_called()
 
+    @patch("scripts.chat_bot_responder.mark_bot_offline")
+    @patch("scripts.chat_bot_responder.mark_bot_online")
     @patch("scripts.chat_bot_responder.time.sleep")
     @patch("scripts.chat_bot_responder.insert_bot_message")
     @patch("scripts.chat_bot_responder.generate_bot_reply")
@@ -291,7 +303,7 @@ class RunAntiLoopGuardTests(unittest.TestCase):
     @patch("scripts.chat_bot_responder.check_ollama_available")
     def test_replies_to_a_regular_partner(
         self, mock_check, mock_resolve_bots, mock_find_pairs, mock_last_message,
-        mock_generate_reply, mock_insert, mock_sleep,
+        mock_generate_reply, mock_insert, mock_sleep, _mock_online, _mock_offline,
     ):
         self._run_one_cycle(
             "carla", mock_check, mock_resolve_bots, mock_find_pairs,
@@ -299,6 +311,70 @@ class RunAntiLoopGuardTests(unittest.TestCase):
         )
         mock_generate_reply.assert_called_once_with(1, 3, model=MODEL)
         mock_insert.assert_called_once_with(1, 3, "Hey!")
+
+
+class BotPresenceTests(DBTestCase):
+    """The bot must look "online" to its partners, using the same
+    `online_until` / `last_seen_at` columns as app.load_current_user."""
+
+    def setUp(self):
+        super().setUp()
+        self.bot_id = self.create_user(email="bot_ana@bot.test", username="bot_ana")
+
+    def _presence(self):
+        return query_one(
+            "SELECT last_seen_at, online_until FROM users WHERE id = ?", (self.bot_id,)
+        )
+
+    def test_mark_bot_online_makes_bot_online(self):
+        mark_bot_online(self.bot_id)
+        self.assertTrue(_compute_online(self._presence()["online_until"]))
+
+    def test_mark_bot_online_sets_ttl_and_last_seen(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        mark_bot_online(self.bot_id, now=now)
+        row = self._presence()
+        self.assertEqual(row["last_seen_at"], now.isoformat())
+        self.assertEqual(
+            row["online_until"],
+            (now + timedelta(seconds=BOT_ONLINE_TTL_SECONDS)).isoformat(),
+        )
+
+    def test_ttl_outlasts_the_poll_interval(self):
+        self.assertGreater(BOT_ONLINE_TTL_SECONDS, DEFAULT_POLL_INTERVAL_SECONDS)
+
+    def test_mark_bot_offline_makes_bot_offline_and_keeps_last_seen(self):
+        mark_bot_online(self.bot_id)
+        mark_bot_offline(self.bot_id)
+        row = self._presence()
+        self.assertFalse(_compute_online(row["online_until"]))
+        self.assertIsNotNone(row["last_seen_at"])
+
+
+class RunPresenceTests(unittest.TestCase):
+    @patch("scripts.chat_bot_responder.mark_bot_offline")
+    @patch("scripts.chat_bot_responder.mark_bot_online")
+    @patch("scripts.chat_bot_responder.time.sleep")
+    @patch("scripts.chat_bot_responder.find_bot_pairs", return_value=[])
+    @patch("scripts.chat_bot_responder.resolve_bots")
+    @patch("scripts.chat_bot_responder.check_ollama_available")
+    def test_bots_marked_online_each_cycle_and_offline_on_exit(
+        self, _mock_check, mock_resolve_bots, _mock_pairs, mock_sleep,
+        mock_online, mock_offline,
+    ):
+        mock_resolve_bots.return_value = [
+            {"id": 1, "username": "bot_ana"},
+            {"id": 2, "username": "bot_bob"},
+        ]
+        # Two full cycles, then stop (Ctrl+C).
+        mock_sleep.side_effect = [None, KeyboardInterrupt]
+
+        with self.assertRaises(KeyboardInterrupt):
+            run()
+
+        online_ids = [c.args[0] for c in mock_online.call_args_list]
+        self.assertEqual(online_ids, [1, 2, 1, 2])
+        self.assertEqual(sorted(c.args[0] for c in mock_offline.call_args_list), [1, 2])
 
 
 if __name__ == "__main__":

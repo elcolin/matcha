@@ -1,7 +1,7 @@
 import os
 import secrets
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.db import execute, query_one
@@ -30,13 +30,19 @@ def create_bot_user(suffix=None):
     email = f"{username}@bot.matcha.invalid"
     password_hash = hash_password(secrets.token_urlsafe(24))
     created_at = datetime.now()
+    # Presence fields use the same aware-UTC ISO format as app.load_current_user.
+    # The bot stays offline (online_until NULL) until chat_bot_responder.py runs.
+    last_seen_at = datetime.now(timezone.utc).isoformat()
 
     cur = execute(
         """INSERT INTO users
            (email, username, last_name, first_name, password_hash,
-            email_verified, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (email, username, "Bot", suffix, password_hash, 1, created_at.isoformat(sep=" ")),
+            email_verified, created_at, last_seen_at, online_until)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            email, username, "Bot", suffix, password_hash, 1,
+            created_at.isoformat(sep=" "), last_seen_at, None,
+        ),
     )
     user = {"id": cur.lastrowid, "username": username}
 

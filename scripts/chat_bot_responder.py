@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.db import execute, query_all, query_one
@@ -48,6 +49,24 @@ PARTNER_LABEL = "A"
 # Keep this comfortably under the mandatory 10s real-time budget once the
 # Ollama generation latency is added on top of it.
 DEFAULT_POLL_INTERVAL_SECONDS = 2
+
+# Same presence window as app.load_current_user: refreshed every poll cycle, so
+# the bot shows as "Online" for as long as this script runs.
+BOT_ONLINE_TTL_SECONDS = 30
+
+
+def mark_bot_online(bot_id, now=None):
+    """Refresh the bot's presence exactly like app.load_current_user does."""
+    now = now or datetime.now(timezone.utc)
+    execute(
+        "UPDATE users SET last_seen_at = ?, online_until = ? WHERE id = ?",
+        (now.isoformat(), (now + timedelta(seconds=BOT_ONLINE_TTL_SECONDS)).isoformat(), bot_id),
+    )
+
+
+def mark_bot_offline(bot_id):
+    """Show the bot as offline right away instead of after the TTL expires."""
+    execute("UPDATE users SET online_until = NULL WHERE id = ?", (bot_id,))
 
 
 def is_bot_username(username):
@@ -235,36 +254,43 @@ def run(bot_selector=None, poll_interval=DEFAULT_POLL_INTERVAL_SECONDS, model=MO
 
     print("Bot responder started for: " + ", ".join(bot["username"] for bot in bots))
 
-    while True:
+    try:
+        while True:
+            for bot in bots:
+                mark_bot_online(bot["id"])
+                # Recomputed every cycle so an unlike/block cuts the auto-reply
+                # off starting the very next poll, with no stale cache involved.
+                for partner in find_bot_pairs(bot["id"]):
+                    last = last_message_between(bot["id"], partner["id"])
+                    if not needs_bot_reply(last, bot["id"]):
+                        continue
+                    # Anti infinite-loop guard: never reply to another bot's message.
+                    if is_bot_username(last["sender_username"]):
+                        continue
+
+                    try:
+                        reply = generate_bot_reply(bot["id"], partner["id"], model=model)
+                    except OllamaUnavailableError as exc:
+                        print(f"Error: Ollama became unavailable: {exc}", file=sys.stderr)
+                        sys.exit(1)
+
+                    if reply is None:
+                        print(
+                            f"Skipped reply from '{bot['username']}' to '{partner['username']}': "
+                            "no valid message could be generated.",
+                            file=sys.stderr,
+                        )
+                        continue
+
+                    insert_bot_message(bot["id"], partner["id"], reply)
+                    # Generation can be slow: keep the presence fresh between replies.
+                    mark_bot_online(bot["id"])
+                    print(f"[{bot['username']}] -> [{partner['username']}]: {reply}")
+
+            time.sleep(poll_interval)
+    finally:
         for bot in bots:
-            # Recomputed every cycle so an unlike/block cuts the auto-reply
-            # off starting the very next poll, with no stale cache involved.
-            for partner in find_bot_pairs(bot["id"]):
-                last = last_message_between(bot["id"], partner["id"])
-                if not needs_bot_reply(last, bot["id"]):
-                    continue
-                # Anti infinite-loop guard: never reply to another bot's message.
-                if is_bot_username(last["sender_username"]):
-                    continue
-
-                try:
-                    reply = generate_bot_reply(bot["id"], partner["id"], model=model)
-                except OllamaUnavailableError as exc:
-                    print(f"Error: Ollama became unavailable: {exc}", file=sys.stderr)
-                    sys.exit(1)
-
-                if reply is None:
-                    print(
-                        f"Skipped reply from '{bot['username']}' to '{partner['username']}': "
-                        "no valid message could be generated.",
-                        file=sys.stderr,
-                    )
-                    continue
-
-                insert_bot_message(bot["id"], partner["id"], reply)
-                print(f"[{bot['username']}] -> [{partner['username']}]: {reply}")
-
-        time.sleep(poll_interval)
+            mark_bot_offline(bot["id"])
 
 
 if __name__ == "__main__":
