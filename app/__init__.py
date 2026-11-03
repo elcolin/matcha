@@ -1,7 +1,9 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Flask, flash, g, redirect, session, url_for
+from urllib.parse import urlsplit
+
+from flask import Flask, flash, g, redirect, request, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 from dotenv import load_dotenv
 
@@ -18,6 +20,17 @@ from app.db import close_db, init_db, query_one, execute
 from app.utils import csrf_protect, get_csrf_token, time_ago
 
 load_dotenv()
+
+
+_FORM_MIMETYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
+
+
+def _safe_referrer_path():
+    """Path of the same-origin page that submitted the form, else the home page."""
+    referrer = urlsplit(request.referrer or "")
+    if referrer.netloc != request.host or not referrer.path.startswith("/"):
+        return url_for("main.home")
+    return referrer.path + (f"?{referrer.query}" if referrer.query else "")
 
 
 def create_app():
@@ -43,10 +56,20 @@ def create_app():
     def bad_request(_):
         return {"error": "Bad request"}, 400
 
-    from app.utils import APIError
+    from app.utils import APIError, CSRFError
 
     @app.errorhandler(APIError)
     def api_error_handler(err):
+        # A plain HTML form POST would otherwise land on a raw JSON page.
+        # Auth and CSRF rejections keep their explicit status code.
+        if (
+            request.method == "POST"
+            and request.mimetype in _FORM_MIMETYPES
+            and err.status != 401
+            and not isinstance(err, CSRFError)
+        ):
+            flash(err.message, "error")
+            return redirect(_safe_referrer_path())
         return {"error": err.message}, err.status
 
     @app.errorhandler(RequestEntityTooLarge)
