@@ -116,14 +116,6 @@ class GeocodeCityTests(unittest.TestCase):
         mock_geolocator.geocode.assert_called_once_with("Lyon", exactly_one=True)
 
     @patch("app.profile.geolocation.geolocator")
-    def test_includes_neighborhood_in_query_when_given(self, mock_geolocator):
-        mock_geolocator.geocode.return_value = MagicMock(latitude=48.86, longitude=2.36)
-
-        geolocation.geocode_city("Paris", "Le Marais")
-
-        mock_geolocator.geocode.assert_called_once_with("Le Marais, Paris", exactly_one=True)
-
-    @patch("app.profile.geolocation.geolocator")
     def test_raises_api_error_for_an_unrecognized_city(self, mock_geolocator):
         mock_geolocator.geocode.return_value = None
 
@@ -140,31 +132,13 @@ class GeocodeCityTests(unittest.TestCase):
                 self.assertTrue(ctx.exception.message)
 
     @patch("app.profile.geolocation.geolocator")
-    def test_unknown_neighborhood_falls_back_to_city_alone(self, mock_geolocator):
-        mock_geolocator.geocode.side_effect = [
-            None,
-            MagicMock(latitude=48.8566, longitude=2.3522),
-        ]
-
-        result = geolocation.geocode_city("Paris", "Nowhereville")
-
-        self.assertEqual(result, (48.8566, 2.3522))
-        self.assertEqual(
-            mock_geolocator.geocode.call_args_list,
-            [
-                call("Nowhereville, Paris", exactly_one=True),
-                call("Paris", exactly_one=True),
-            ],
-        )
-
-    @patch("app.profile.geolocation.geolocator")
     def test_unknown_neighborhood_and_city_raises_api_error(self, mock_geolocator):
         mock_geolocator.geocode.return_value = None
 
         with self.assertRaises(APIError) as ctx:
             geolocation.geocode_city("Atlantis", "Nowhereville")
 
-        self.assertEqual(mock_geolocator.geocode.call_count, 2)
+        self.assertEqual(mock_geolocator.geocode.call_count, 1)
         self.assertEqual(ctx.exception.message, "'Atlantis' is not a recognized location.")
 
     @patch("app.profile.geolocation.geolocator")
@@ -174,10 +148,10 @@ class GeocodeCityTests(unittest.TestCase):
                 mock_geolocator.reset_mock()
                 mock_geolocator.geocode.side_effect = exc
                 with self.assertRaises(APIError) as ctx:
-                    geolocation.geocode_city("Paris", "Le Marais")
+                    geolocation.geocode_city("Paris")
                 self.assertEqual(ctx.exception.status, 503)
                 mock_geolocator.geocode.assert_called_once_with(
-                    "Le Marais, Paris", exactly_one=True
+                    "Paris", exactly_one=True
                 )
 
     @patch("app.profile.geolocation.geolocator")
