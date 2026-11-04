@@ -222,6 +222,16 @@ class SearchRouteTests(unittest.TestCase):
         html = self.client.get("/?min_fame=1000").get_data(as_text=True)
 
         self.assertIn("No profiles match your filters.", html)
+        self.assertIn('href="/">Clear filters</a>', html)
+
+    def test_home_page_without_filters_shows_no_suggestions_message(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn("No suggestions for now.", html)
+        self.assertNotIn("No profiles match your filters.", html)
 
     def test_search_page_shows_order_options_without_unknown_sort(self):
         viewer_id = self._create_user("viewer", 28)

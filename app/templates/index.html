@@ -57,7 +57,14 @@
                     {% for profile in profiles %}
                         {% include 'components/profile_card.html' %}
                     {% else %}
-                        <p class="col-12 text-muted text-center">No profiles match your filters.</p>
+                        {% if args.get('age_gap') or args.get('max_distance') or args.get('min_fame') or args.get('min_shared_tags') %}
+                            <p class="col-12 text-muted text-center">
+                                No profiles match your filters.
+                                <a href="{{ url_for('main.home') }}">Clear filters</a>
+                            </p>
+                        {% else %}
+                            <p class="col-12 text-muted text-center">No suggestions for now.</p>
+                        {% endif %}
                     {% endfor %}
                 </div>
             </div>
