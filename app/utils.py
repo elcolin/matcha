@@ -46,10 +46,15 @@ def login_required(fn):
 
 
 def missing_profile_fields(user_id: int) -> list[str]:
-    """Labels of the profile fields a user must still fill before using the site."""
+    """Labels of the profile fields a user must still fill before using the site.
+
+    The subject's profile (gender, sexual preference, bio, interest tags, a
+    profile picture) plus the age and location that matching relies on.
+    """
     row = query_one(
         """
-        SELECT p.gender, p.age, p.city,
+        SELECT p.gender, p.sexual_preference, p.bio, p.age, p.city,
+               EXISTS (SELECT 1 FROM user_tags ut WHERE ut.user_id = p.user_id) AS has_tags,
                EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id AND ph.is_profile_photo = 1)
                    AS has_profile_photo
         FROM profiles p
@@ -57,13 +62,15 @@ def missing_profile_fields(user_id: int) -> list[str]:
         """,
         (user_id,),
     )
-    if row is None:
-        return ["gender", "age", "location", "profile picture"]
+    row = dict(row) if row else {}
     checks = (
-        ("gender", row["gender"]),
-        ("age", row["age"]),
-        ("location", (row["city"] or "").strip()),
-        ("profile picture", row["has_profile_photo"]),
+        ("gender", row.get("gender")),
+        ("sexual preference", row.get("sexual_preference")),
+        ("bio", (row.get("bio") or "").strip()),
+        ("interests", row.get("has_tags")),
+        ("profile picture", row.get("has_profile_photo")),
+        ("age", row.get("age")),
+        ("location", (row.get("city") or "").strip()),
     )
     return [label for label, value in checks if not value]
 

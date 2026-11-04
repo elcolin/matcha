@@ -15,9 +15,10 @@ class MissingProfileFieldsTests(DBTestCase):
         self.user_id = self.create_user(email="a@example.com", username="alice")
 
     def test_fresh_profile_misses_every_required_field(self):
+        # sexual_preference defaults to 'everyone' (bisexual by default, per the subject).
         self.assertEqual(
             missing_profile_fields(self.user_id),
-            ["gender", "age", "location", "profile picture"],
+            ["gender", "bio", "interests", "profile picture", "age", "location"],
         )
 
     def test_complete_profile_misses_nothing(self):
@@ -30,6 +31,24 @@ class MissingProfileFieldsTests(DBTestCase):
         execute("UPDATE photos SET is_profile_photo = 0 WHERE user_id = ?", (self.user_id,))
 
         self.assertEqual(missing_profile_fields(self.user_id), ["profile picture"])
+
+    def test_missing_sexual_preference_is_reported(self):
+        complete_profile(self.user_id)
+        execute("UPDATE profiles SET sexual_preference = NULL WHERE user_id = ?", (self.user_id,))
+
+        self.assertEqual(missing_profile_fields(self.user_id), ["sexual preference"])
+
+    def test_blank_bio_counts_as_missing(self):
+        complete_profile(self.user_id)
+        execute("UPDATE profiles SET bio = '   ' WHERE user_id = ?", (self.user_id,))
+
+        self.assertEqual(missing_profile_fields(self.user_id), ["bio"])
+
+    def test_profile_without_tags_misses_interests(self):
+        complete_profile(self.user_id)
+        execute("DELETE FROM user_tags WHERE user_id = ?", (self.user_id,))
+
+        self.assertEqual(missing_profile_fields(self.user_id), ["interests"])
 
     def test_blank_city_counts_as_missing_location(self):
         complete_profile(self.user_id)
@@ -90,7 +109,7 @@ class IncompleteProfileGateTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Complete your profile", html)
-        self.assertIn("gender, age, location, profile picture", html)
+        self.assertIn("gender, bio, interests, profile picture, age, location", html)
 
     def test_mutating_requests_are_forbidden_while_incomplete(self):
         from app.security import generate_csrf_token
