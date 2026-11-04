@@ -6,7 +6,7 @@ import unittest
 from werkzeug.datastructures import MultiDict
 
 from app.config import Config
-from app.search.routes import _filter
+from app.search.routes import _filter, _refine
 
 
 class FilterTagsTests(unittest.TestCase):
@@ -25,6 +25,42 @@ class FilterTagsTests(unittest.TestCase):
         result = _filter(items, MultiDict({"tags": "Coffee,travel"}))
 
         self.assertEqual([i["id"] for i in result], [1])
+
+
+class RefineTests(unittest.TestCase):
+    def test_no_refine_args_keeps_all_items(self):
+        items = [{"age": 20, "distance_km": 5, "popularity_score": 1, "shared_tags_count": 0}]
+
+        self.assertEqual(_refine(items, MultiDict(), viewer_age=30), items)
+
+    def test_age_gap_is_relative_to_viewer_and_drops_unknown_age(self):
+        items = [{"id": 1, "age": 33}, {"id": 2, "age": 40}, {"id": 3, "age": None}]
+
+        result = _refine(items, MultiDict({"age_gap": "3"}), viewer_age=30)
+
+        self.assertEqual([i["id"] for i in result], [1])
+
+    def test_age_gap_ignored_when_viewer_age_unknown(self):
+        items = [{"id": 1, "age": 33}]
+
+        self.assertEqual(_refine(items, MultiDict({"age_gap": "1"}), viewer_age=None), items)
+
+    def test_max_distance_min_fame_and_min_shared_tags(self):
+        items = [
+            {"id": 1, "distance_km": 10, "popularity_score": 50, "shared_tags_count": 2},
+            {"id": 2, "distance_km": 80, "popularity_score": 50, "shared_tags_count": 2},
+            {"id": 3, "distance_km": 10, "popularity_score": 5, "shared_tags_count": 2},
+            {"id": 4, "distance_km": 10, "popularity_score": 50, "shared_tags_count": 0},
+        ]
+        args = MultiDict({"max_distance": "50", "min_fame": "20", "min_shared_tags": "1"})
+
+        self.assertEqual([i["id"] for i in _refine(items, args, viewer_age=None)], [1])
+
+    def test_negative_values_are_ignored(self):
+        items = [{"id": 1, "age": 50, "distance_km": 10, "popularity_score": 0, "shared_tags_count": 0}]
+        args = MultiDict({"age_gap": "-1", "max_distance": "-5"})
+
+        self.assertEqual(_refine(items, args, viewer_age=20), items)
 
 
 class SearchRouteTests(unittest.TestCase):
@@ -122,23 +158,46 @@ class SearchRouteTests(unittest.TestCase):
             descending_html.index(f'href="/profile/{missing_age_id}"'),
         )
 
-    def test_home_page_shows_sort_and_filter_form(self):
+    def test_home_page_shows_sort_and_filter_form_without_ranges(self):
         viewer_id = self._create_user("viewer", 28)
         self._login_as(viewer_id)
 
         html = self.client.get("/").get_data(as_text=True)
 
         self.assertIn('action="/"', html)
-        for field in ("min_age", "max_age", "city", "min_popularity", "max_popularity", "tags", "sort_by", "order"):
+        for field in ("age_gap", "max_distance", "min_fame", "min_shared_tags", "sort_by", "order"):
             self.assertIn(f'name="{field}"', html)
+        for range_field in ("min_age", "max_age", "min_popularity", "max_popularity"):
+            self.assertNotIn(f'name="{range_field}"', html)
 
-    def test_home_page_filters_suggestions_by_age(self):
+    def test_search_page_keeps_range_criteria_and_result_filters(self):
         viewer_id = self._create_user("viewer", 28)
-        matching_id = self._create_user("matching", 32)
-        too_young_id = self._create_user("too_young", 25)
         self._login_as(viewer_id)
 
-        html = self.client.get("/?min_age=30").get_data(as_text=True)
+        html = self.client.get("/search").get_data(as_text=True)
+
+        for field in ("min_age", "max_age", "min_popularity", "max_popularity", "city", "tags",
+                      "age_gap", "max_distance", "min_fame", "min_shared_tags", "sort_by", "order"):
+            self.assertIn(f'name="{field}"', html)
+
+    def test_search_results_can_be_refined_by_age_gap(self):
+        viewer_id = self._create_user("viewer", 30)
+        close_id = self._create_user("close", 32)
+        far_id = self._create_user("far", 45)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/search?min_age=18&max_age=60&age_gap=5").get_data(as_text=True)
+
+        self.assertIn(f'href="/profile/{close_id}"', html)
+        self.assertNotIn(f'href="/profile/{far_id}"', html)
+
+    def test_home_page_filters_suggestions_by_age_gap(self):
+        viewer_id = self._create_user("viewer", 28)
+        matching_id = self._create_user("matching", 32)
+        too_young_id = self._create_user("too_young", 20)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/?age_gap=5").get_data(as_text=True)
 
         self.assertIn(f'href="/profile/{matching_id}"', html)
         self.assertNotIn(f'href="/profile/{too_young_id}"', html)
@@ -160,7 +219,7 @@ class SearchRouteTests(unittest.TestCase):
         self._create_user("other", 30)
         self._login_as(viewer_id)
 
-        html = self.client.get("/?min_age=90").get_data(as_text=True)
+        html = self.client.get("/?min_fame=1000").get_data(as_text=True)
 
         self.assertIn("No profiles match your filters.", html)
 

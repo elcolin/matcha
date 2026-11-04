@@ -4,9 +4,43 @@
 <div class="container py-5">
     <h1 class="mb-4">Advanced search</h1>
 
-    {% with action=url_for('search.search_view'), submit_label='Search' %}
-        {% include 'components/filter_form.html' %}
-    {% endwith %}
+    <form method="get" action="{{ url_for('search.search_view') }}" class="mb-4">
+        <fieldset class="row g-2 mb-3 align-items-end">
+            <legend class="col-12 h5">Search criteria</legend>
+            <div class="col-6 col-md-auto">
+                <label class="form-label" for="min_age">Min age</label>
+                <input class="form-control" type="number" min="18" max="120" id="min_age" name="min_age" value="{{ args.get('min_age', '') }}">
+            </div>
+            <div class="col-6 col-md-auto">
+                <label class="form-label" for="max_age">Max age</label>
+                <input class="form-control" type="number" min="18" max="120" id="max_age" name="max_age" value="{{ args.get('max_age', '') }}">
+            </div>
+            <div class="col-6 col-md-auto">
+                <label class="form-label" for="min_popularity">Min fame rating</label>
+                <input class="form-control" type="number" min="0" id="min_popularity" name="min_popularity" value="{{ args.get('min_popularity', '') }}">
+            </div>
+            <div class="col-6 col-md-auto">
+                <label class="form-label" for="max_popularity">Max fame rating</label>
+                <input class="form-control" type="number" min="0" id="max_popularity" name="max_popularity" value="{{ args.get('max_popularity', '') }}">
+            </div>
+            <div class="col-12 col-md-auto">
+                <label class="form-label" for="city">City</label>
+                <input class="form-control" type="text" maxlength="100" id="city" name="city" value="{{ args.get('city', '') }}">
+            </div>
+            <div class="col-12 col-md-auto">
+                <label class="form-label" for="tags">Tags</label>
+                <input class="form-control" type="text" maxlength="200" id="tags" name="tags" value="{{ args.get('tags', '') }}" placeholder="music, hiking">
+            </div>
+        </fieldset>
+        <fieldset class="row g-2 mb-3 align-items-end">
+            <legend class="col-12 h5">Filter &amp; sort results</legend>
+            {% include 'components/filter_form.html' %}
+        </fieldset>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">Search</button>
+            <a href="{{ url_for('search.search_view') }}" class="btn btn-outline-secondary">Reset</a>
+        </div>
+    </form>
 
     {% if searched %}
     <div class="row g-4">
