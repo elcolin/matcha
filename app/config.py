@@ -25,6 +25,19 @@ class Config:
 class UserConfig(Config):
     GENDERS = ["female", "male", "non-binary", "other"]
     SEXUAL_PREFERENCES = ["everyone", "men", "women"]
+
+    # Server-side limits, mirrored by the form attributes (min/max/maxlength/
+    # pattern) in the templates: the client checks are only a convenience.
+    AGE_MIN = 18
+    AGE_MAX = 120
+    NAME_MAX_LENGTH = 50
+    USERNAME_PATTERN = r"[A-Za-z0-9_.-]{3,30}"
+    BIO_MAX_LENGTH = 1000
+    PLACE_MAX_LENGTH = 100
+    TAG_MAX_LENGTH = 30
+    TAGS_MAX_COUNT = 10
+    MESSAGE_MAX_LENGTH = 1000
+    PASSWORD_MAX_LENGTH = 128
     TAGS = {
         "early-bird": 1,
         "night-owl": 2,

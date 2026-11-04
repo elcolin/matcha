@@ -6,7 +6,9 @@ from flask import Blueprint, Response, g, jsonify, render_template, request, str
 from app.db import execute, query_all, query_one
 from app.profile.routes import _compute_online
 from app.security import build_notification_payload
+from app.config import UserConfig
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
+from app.validation import clean_text
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
 POLL_INTERVAL_SECONDS = 1
@@ -101,9 +103,7 @@ def send_message(user_id):
         raise APIError("Chat unavailable", 403)
 
     data = request.get_json(silent=True) or request.form
-    content = str(data.get("content", "")).strip()
-    if not content:
-        raise APIError("content is required", 400)
+    content = clean_text(data.get("content"), "Message", UserConfig.MESSAGE_MAX_LENGTH, required=True)
 
     execute(
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
