@@ -34,10 +34,12 @@ Créer un fichier `.env` à la racine (jamais commité) avec au minimum :
 SECRET_KEY=...              # clé de signature des sessions/tokens/CSRF
 DATABASE_PATH=...           # optionnel, défaut instance/matcha.db
 SESSION_COOKIE_SECURE=false # true en production (HTTPS)
-SMTP_SERVER=...
+SMTP_SERVER=...             # credentials to send verification emails
 SMTP_PORT=...
 SMTP_USERNAME=...
 SMTP_PASSWORD=...
+API_IMAGES=...             # to generate profile photos
+PLACEHOLDER_PATH=...        # placeholder if images API doesn't work
 ```
 
 ## Lancer le serveur de développement
@@ -60,7 +62,9 @@ Les tests tournent aussi en CI GitHub Actions sur chaque push/PR (`.github/workf
 
 CLI dev-only, lancés manuellement, jamais démarrés par l'application Flask :
 
-- `scripts/generate_users.py [count]` — génère des profils factices via `Faker` (au moins 500 requis pour l'évaluation, cf. contraintes du sujet).
+- `scripts/generate_users.py [count]` - génère des profils factices via `Faker` (au moins 500 requis pour l'évaluation, cf. contraintes du sujet). Photos downloaded via API (api.inaturalist.org) or in case of API failure replaced by placeholder photos.
+- `generate_users.py [count] ai` - generate profiles with bio descrption written by the model (by default `SmolLM2-360M-Instruct`)
+- `generate_users.py cleanup START END` - delete users data with given id range or `generate_users.py cleanall` delete all users
 - `scripts/generate_chat.py [count]` — seed des conversations réalistes entre utilisateurs matchés, via un modèle Ollama local (nécessite `ollama serve` avec un modèle instruct léger, ex. `qwen2.5:3b-instruct`).
 - `scripts/create_bot_user.py <user_id> [suffix]` — crée un compte "bot" (`username` préfixé `bot_`) et le matche (like mutuel) avec un utilisateur cible.
 - `scripts/chat_bot_responder.py [username]` — fait répondre en temps réel un utilisateur "bot" aux messages de ses partenaires matchés non bloqués, en réutilisant les mêmes helpers Ollama que `generate_chat.py` ; nécessite aussi `ollama serve`.
