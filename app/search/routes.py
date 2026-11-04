@@ -1,6 +1,6 @@
 from flask import Blueprint, g, render_template, request
 from app.match.routes import MISSING_DISTANCE_KM, candidate_profiles
-from app.utils import login_required
+from app.utils import login_required, popular_tags
 
 search_bp = Blueprint("search", __name__)
 
@@ -65,4 +65,5 @@ def search_view():
         profiles=profiles,
         searched=searched,
         args=request.args,
+        popular_tags=popular_tags(),
     )
