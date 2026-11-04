@@ -6,7 +6,7 @@ import unittest
 from werkzeug.datastructures import MultiDict
 
 from app.config import Config
-from app.search.routes import _filter, _refine
+from app.search.routes import _filter, _refine, _sort
 
 
 class FilterTagsTests(unittest.TestCase):
@@ -61,6 +61,21 @@ class RefineTests(unittest.TestCase):
         args = MultiDict({"age_gap": "-1", "max_distance": "-5"})
 
         self.assertEqual(_refine(items, args, viewer_age=20), items)
+
+
+class SortTests(unittest.TestCase):
+    def test_smart_match_descending_keeps_best_matches_first(self):
+        items = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+        for args in (MultiDict(), MultiDict({"sort_by": "smart", "order": "desc"})):
+            self.assertEqual([i["id"] for i in _sort(list(items), args)], [1, 2, 3])
+
+    def test_smart_match_ascending_reverses_ranking(self):
+        items = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+        result = _sort(items, MultiDict({"sort_by": "smart", "order": "asc"}))
+
+        self.assertEqual([i["id"] for i in result], [3, 2, 1])
 
 
 class SearchRouteTests(unittest.TestCase):

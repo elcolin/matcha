@@ -69,9 +69,12 @@ def _sort(items, args):
         "popularity": lambda p: p.get("popularity_score", 0),
         "tags": lambda p: p["shared_tags_count"],
     }
+    descending = args.get("order", "desc") != "asc"
     sort_by = args.get("sort_by", "smart")
-    if sort_by in keys:  # "smart" keeps the order from candidate_profiles()
-        items.sort(key=keys[sort_by], reverse=args.get("order", "desc") == "desc")
+    if sort_by in keys:
+        items.sort(key=keys[sort_by], reverse=descending)
+    elif not descending:  # "smart": candidate_profiles() ranks best matches first
+        items.reverse()
     return items
 
 
