@@ -36,6 +36,8 @@ def _safe_referrer_path():
 def create_app():
     app = Flask(__name__)
     app.config.from_object("app.config.Config")
+    if not app.config["SECRET_KEY"]:
+        raise RuntimeError("SECRET_KEY is not set: define it in .env")
     app.add_template_filter(time_ago)
 
     app.register_blueprint(main_bp)
