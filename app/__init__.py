@@ -17,12 +17,22 @@ from app.notifications.routes import notifications_bp
 from app.search.routes import search_bp
 
 from app.db import close_db, init_db, query_one, execute
-from app.utils import csrf_protect, get_csrf_token, time_ago
+from app.utils import APIError, csrf_protect, get_csrf_token, missing_profile_fields, time_ago
 
 load_dotenv()
 
 
 _FORM_MIMETYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
+
+# Endpoints still reachable with an incomplete profile: the profile editor
+# itself and the unread badge polled by every page (components/base.html).
+_INCOMPLETE_PROFILE_ENDPOINTS = {
+    "profile.edit_profile",
+    "profile.edit_profile_submit",
+    "profile.profile_photos",
+    "profile.profile_photos_delete_form",
+    "notifications.unread_notifications_count",
+}
 
 
 def _safe_referrer_path():
@@ -56,7 +66,7 @@ def create_app():
     def bad_request(_):
         return {"error": "Bad request"}, 400
 
-    from app.utils import APIError, CSRFError
+    from app.utils import CSRFError
 
     @app.errorhandler(APIError)
     def api_error_handler(err):
@@ -127,6 +137,23 @@ def create_app():
     @app.before_request
     def enforce_csrf():
         csrf_protect()
+
+    @app.before_request
+    def enforce_complete_profile():
+        # The subject only opens the site once the profile is complete: until
+        # then a signed-in user may only edit their profile (or log out).
+        if not g.get("current_user") or request.blueprint == "auth":
+            return None
+        if request.endpoint in (None, "static") or request.endpoint in _INCOMPLETE_PROFILE_ENDPOINTS:
+            return None
+        missing = missing_profile_fields(g.current_user["id"])
+        if not missing:
+            return None
+        message = f"Complete your profile to access the site (missing: {', '.join(missing)})."
+        if request.method != "GET":
+            raise APIError(message, 403)
+        flash(message, "error")
+        return redirect(url_for("profile.edit_profile"))
 
     @app.context_processor
     def inject_auth():

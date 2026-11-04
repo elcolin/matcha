@@ -3,6 +3,7 @@ import unittest
 from flask import render_template
 
 from tests.test_profile_edit_location import _ProfileEditTestCase
+from tests.helpers import complete_profile_for_username
 
 
 class MissingLocationDisplayTests(_ProfileEditTestCase):
@@ -24,6 +25,8 @@ class MissingLocationDisplayTests(_ProfileEditTestCase):
 
     def test_profile_detail_page_does_not_render_none(self):
         bob_id = self._create_bare_profile()
+        with self.app.app_context():
+            complete_profile_for_username("alice")
         self._login_and_get_token()
 
         html = self.client.get(f"/profile/{bob_id}").get_data(as_text=True)

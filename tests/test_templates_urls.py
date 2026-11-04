@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from app import config as app_config
+from tests.helpers import complete_profile
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "app" / "templates"
 
@@ -85,6 +86,7 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
                 (user_id, token),
             )
+            complete_profile(user_id)
         with self.client.session_transaction() as sess:
             sess["user_id"] = user_id
             sess["session_token"] = token

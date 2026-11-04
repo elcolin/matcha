@@ -7,6 +7,7 @@ from werkzeug.datastructures import MultiDict
 
 from app.config import Config
 from app.search.routes import _filter
+from tests.helpers import complete_profile
 
 
 class FilterTagsTests(unittest.TestCase):
@@ -68,6 +69,7 @@ class SearchRouteTests(unittest.TestCase):
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
                 (user_id, token),
             )
+            complete_profile(user_id)
         with self.client.session_transaction() as session:
             session["user_id"] = user_id
             session["session_token"] = token

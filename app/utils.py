@@ -45,6 +45,29 @@ def login_required(fn):
     return wrapper
 
 
+def missing_profile_fields(user_id: int) -> list[str]:
+    """Labels of the profile fields a user must still fill before using the site."""
+    row = query_one(
+        """
+        SELECT p.gender, p.age, p.city,
+               EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id AND ph.is_profile_photo = 1)
+                   AS has_profile_photo
+        FROM profiles p
+        WHERE p.user_id = ?
+        """,
+        (user_id,),
+    )
+    if row is None:
+        return ["gender", "age", "location", "profile picture"]
+    checks = (
+        ("gender", row["gender"]),
+        ("age", row["age"]),
+        ("location", (row["city"] or "").strip()),
+        ("profile picture", row["has_profile_photo"]),
+    )
+    return [label for label, value in checks if not value]
+
+
 def get_csrf_token():
     """Return the CSRF token bound to the current session, creating one if missing.
 
