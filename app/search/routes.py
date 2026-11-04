@@ -36,7 +36,7 @@ def _filter(items, args):
 
 def _sort(items, args):
     keys = {
-        "age": lambda p: p.get("age", 0),
+        "age": lambda p: p.get("age") or 0,
         "location": lambda p: p["distance_km"],
         "popularity": lambda p: p.get("popularity_score", 0),
         "tags": lambda p: p["shared_tags_count"],

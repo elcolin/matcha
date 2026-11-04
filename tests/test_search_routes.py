@@ -100,6 +100,28 @@ class SearchRouteTests(unittest.TestCase):
         self.assertNotIn("Too_young, 25", html)
         self.assertIn(f'href="/profile/{matching_id}"', html)
 
+    def test_search_can_sort_profiles_when_age_is_missing(self):
+        viewer_id = self._create_user("viewer", 28)
+        missing_age_id = self._create_user("missing_age", None)
+        aged_id = self._create_user("aged", 32)
+        self._login_as(viewer_id)
+
+        ascending = self.client.get("/search?sort_by=age&order=asc")
+        ascending_html = ascending.get_data(as_text=True)
+        self.assertEqual(ascending.status_code, 200)
+        self.assertLess(
+            ascending_html.index(f'href="/profile/{missing_age_id}"'),
+            ascending_html.index(f'href="/profile/{aged_id}"'),
+        )
+
+        descending = self.client.get("/search?sort_by=age&order=desc")
+        descending_html = descending.get_data(as_text=True)
+        self.assertEqual(descending.status_code, 200)
+        self.assertLess(
+            descending_html.index(f'href="/profile/{aged_id}"'),
+            descending_html.index(f'href="/profile/{missing_age_id}"'),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
