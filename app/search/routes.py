@@ -47,18 +47,20 @@ def _sort(items, args):
     return items
 
 
+def filtered_profiles(viewer_id, args, limit):
+    """Suggestions for viewer_id, filtered and sorted by the query args."""
+    profiles = _sort(_filter(candidate_profiles(viewer_id), args), args)[:limit]
+    for p in profiles:
+        if p["distance_km"] >= MISSING_DISTANCE_KM:
+            p["distance_km"] = None
+    return profiles
+
+
 @search_bp.route("/search", methods=["GET"])
 @login_required
 def search_view():
     searched = bool(request.args)
-    profiles = []
-    if searched:
-        profiles = candidate_profiles(g.current_user["id"])
-        profiles = _sort(_filter(profiles, request.args), request.args)[:50]
-
-        for p in profiles:
-            if p["distance_km"] >= MISSING_DISTANCE_KM:
-                p["distance_km"] = None
+    profiles = filtered_profiles(g.current_user["id"], request.args, 50) if searched else []
 
     return render_template(
         "search.html",

@@ -46,9 +46,14 @@
         <section class="bg-light py-5">
             <div class="container">
                 <h2 class="text-center mb-4">Profiles you might like</h2>
+                {% with action=url_for('main.home'), submit_label='Apply' %}
+                    {% include 'components/filter_form.html' %}
+                {% endwith %}
                 <div class="row g-4">
                     {% for profile in profiles %}
                         {% include 'components/profile_card.html' %}
+                    {% else %}
+                        <p class="col-12 text-muted text-center">No profiles match your filters.</p>
                     {% endfor %}
                 </div>
             </div>

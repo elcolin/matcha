@@ -122,6 +122,56 @@ class SearchRouteTests(unittest.TestCase):
             descending_html.index(f'href="/profile/{missing_age_id}"'),
         )
 
+    def test_home_page_shows_sort_and_filter_form(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn('action="/"', html)
+        for field in ("min_age", "max_age", "city", "min_popularity", "max_popularity", "tags", "sort_by", "order"):
+            self.assertIn(f'name="{field}"', html)
+
+    def test_home_page_filters_suggestions_by_age(self):
+        viewer_id = self._create_user("viewer", 28)
+        matching_id = self._create_user("matching", 32)
+        too_young_id = self._create_user("too_young", 25)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/?min_age=30").get_data(as_text=True)
+
+        self.assertIn(f'href="/profile/{matching_id}"', html)
+        self.assertNotIn(f'href="/profile/{too_young_id}"', html)
+
+    def test_home_page_sorts_suggestions_by_age(self):
+        viewer_id = self._create_user("viewer", 28)
+        older_id = self._create_user("older", 40)
+        younger_id = self._create_user("younger", 22)
+        self._login_as(viewer_id)
+
+        asc = self.client.get("/?sort_by=age&order=asc").get_data(as_text=True)
+        self.assertLess(asc.index(f'href="/profile/{younger_id}"'), asc.index(f'href="/profile/{older_id}"'))
+
+        desc = self.client.get("/?sort_by=age&order=desc").get_data(as_text=True)
+        self.assertLess(desc.index(f'href="/profile/{older_id}"'), desc.index(f'href="/profile/{younger_id}"'))
+
+    def test_home_page_shows_empty_message_when_no_profile_matches(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._create_user("other", 30)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/?min_age=90").get_data(as_text=True)
+
+        self.assertIn("No profiles match your filters.", html)
+
+    def test_search_page_shows_order_options_without_unknown_sort(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        response = self.client.get("/search?sort_by=bogus&order=bogus")
+
+        self.assertEqual(response.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
