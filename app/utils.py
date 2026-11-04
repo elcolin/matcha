@@ -151,6 +151,24 @@ _TIME_AGO_UNITS = (
 )
 
 
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def format_datetime(iso_value):
+    """Format an ISO timestamp as 'Nov 4, 2026 at 14:32 UTC'; None when missing or invalid."""
+    if not iso_value:
+        return None
+    try:
+        moment = datetime.fromisoformat(iso_value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    moment = moment.astimezone(timezone.utc)
+    return f"{_MONTH_ABBR[moment.month - 1]} {moment.day}, {moment.year} at {moment:%H:%M} UTC"
+
+
 def time_ago(iso_value, now=None):
     """Format an ISO timestamp as '2 hours ago'; None when missing or invalid."""
     if not iso_value:
