@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime, timedelta, timezone
 
 from urllib.parse import urlsplit
@@ -170,7 +169,6 @@ def create_app():
         return {
             "current_user": g.get("current_user"),
             "unread_notifications": unread_count,
-            "logout_token": session.get("logout_token") or session.setdefault("logout_token", secrets.token_urlsafe(16)),
             "csrf_token": get_csrf_token,
         }
 

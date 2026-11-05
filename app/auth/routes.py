@@ -243,13 +243,12 @@ def login():
     session["user_id"] = user["id"]
     session_token = secrets.token_urlsafe(32)
     session["session_token"] = session_token
-    session["logout_token"] = secrets.token_urlsafe(16)
     execute("INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)", (user["id"], session_token))
 
     return redirect("/")
 
 
-@auth_bp.route("/logout", methods=["GET", "POST"])
+@auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
     user_id = g.current_user["id"]
@@ -259,9 +258,9 @@ def logout():
 
     session.clear()
 
-    if request.method == "GET":
-        return redirect(url_for("main.home"))
-    return jsonify({"message": "Logged out"})
+    if request.is_json:
+        return jsonify({"message": "Logged out"})
+    return redirect(url_for("main.home"))
 
 
 @auth_bp.route("/password-reset/request", methods=["GET", "POST"])

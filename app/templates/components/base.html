@@ -49,7 +49,10 @@
                     </ul>
                     <div class="d-flex">
                         {% if current_user %}
-                            <a href="{{ url_for("auth.logout") }}" class="btn btn-danger">Logout</a>
+                            <form method="post" action="{{ url_for('auth.logout') }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger">Logout</button>
+                            </form>
                         {% else %}
                             <a href="{{ url_for("auth.login") }}"
                                class="btn btn-outline-danger me-2">Login</a>
