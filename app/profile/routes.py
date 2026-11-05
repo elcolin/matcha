@@ -327,8 +327,7 @@ def _update_profile(user_id: int, data):
             neighborhood = CASE WHEN ? THEN ? ELSE neighborhood END,
             latitude = CASE WHEN ? THEN ? ELSE latitude END,
             longitude = CASE WHEN ? THEN ? ELSE longitude END,
-            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END,
-            updated_at = CURRENT_TIMESTAMP
+            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END
         WHERE user_id = ?
         """,
         (

@@ -46,7 +46,7 @@ def create_bot_user(suffix=None):
     )
     user = {"id": cur.lastrowid, "username": username}
 
-    generate_profile(user["id"], created_at)
+    generate_profile(user["id"])
     create_photos([user], photos_per_user=1)
     return user
 

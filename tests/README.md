@@ -23,7 +23,7 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - Confidentialité de la fiche profil (`test_profile_payload.py`, issue #82) — `GET /profile/<id>` exige une connexion (401 sinon) ; `_profile_payload` n'expose latitude/longitude que sur demande explicite (`include_coordinates`), y compris via `candidate_profiles` où seule la distance est conservée.
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
-- Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
+- Notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — notification `message_received` envoyée à chaque message, destinataire hors ligne inclus, message retrouvé dans l'historique à sa prochaine visite.
 - `app/auth/routes.py::register` (`test_registration.py`) — un utilisateur connecté est redirigé vers l'accueil en GET et en POST, sans création de compte ni envoi d'email ; un visiteur anonyme ou une session obsolète accède toujours au formulaire.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
 <<<<<<< HEAD

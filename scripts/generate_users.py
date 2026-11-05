@@ -82,7 +82,6 @@ def generate_user(max_attempts: int = 10):
                 "username": username,
                 "first_name": first,
                 "last_name": last,
-                "created_at": created_at,
             }
 
         except sqlite3.IntegrityError:
@@ -95,7 +94,7 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
-def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
+def generate_profile(user_id: int, ai: bool = False):
     if ai:
         try:
             from generate_bio import generate_bio
@@ -111,7 +110,6 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     sexual_preference = random.choice(UserConfig.SEXUAL_PREFERENCES)
     age = random.randint(18, 70)
     popularity_score = random.randint(0, 5)
-    updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
     latitude_raw, longitude_raw, city, _country, _timezone = fake.local_latlng(country_code="FR")
     latitude = float(latitude_raw)
@@ -126,8 +124,8 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
         """INSERT INTO profiles
            (user_id, gender, sexual_preference, bio, city, neighborhood,
             latitude, longitude, location_consent_gps, popularity_score,
-            age, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            age)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             gender,
@@ -140,7 +138,6 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
             location_consent_gps,
             popularity_score,
             age,
-            updated_at,
         ),
     )
 
@@ -208,7 +205,7 @@ def create_user_tags(users, tag_map):
 
 def create_profiles(users, ai: bool = False):
     for user in users:
-        generate_profile(user["id"], user["created_at"], ai=ai)
+        generate_profile(user["id"], ai=ai)
 
 
 def get_placeholder(count: int):

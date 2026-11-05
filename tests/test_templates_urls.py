@@ -153,7 +153,7 @@ class TemplatesRenderedUrlsTests(unittest.TestCase):
         self._make_match(alice, bob)
         self._login_as(alice)
         html = self._get_html(f"/chat/view/{bob}")
-        for url in ("/chat/0", "/chat/0/send", "/chat/0/presence", "/users/0/online-status", "/chat/stream"):
+        for url in ("/chat/0", "/chat/0/send", "/users/0/online-status", "/chat/stream"):
             self.assertIn(f'"{url}"', html)
         self.assertNotIn("`/chat/", html)
         self.assertNotIn("`/users/", html)

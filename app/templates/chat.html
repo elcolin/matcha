@@ -72,7 +72,6 @@
   // Endpoint URLs generated server-side with a 0 placeholder for the partner id.
   const CHAT_CONVERSATION_URL = {{ url_for('chat.conversation', user_id=0) | tojson }};
   const CHAT_SEND_URL = {{ url_for('chat.send_message', user_id=0) | tojson }};
-  const CHAT_PRESENCE_URL = {{ url_for('chat.ping_presence', user_id=0) | tojson }};
   const CHAT_ONLINE_STATUS_URL = {{ url_for('users.online_status', id=0) | tojson }};
   const CHAT_STREAM_URL = {{ url_for('chat.stream_events') | tojson }};
 
@@ -134,14 +133,6 @@
   }
 
   loadMessages().then(connectStream);
-
-  // Let the server know this conversation is actively being viewed, so the
-  // recipient doesn't get a redundant notification for messages they see live.
-  function pingPresence() {
-    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
-  }
-  pingPresence();
-  setInterval(pingPresence, 8000);
 
   // Refresh the partner's online indicator without a full page reload, well
   // under the project's 10s real-time requirement.
