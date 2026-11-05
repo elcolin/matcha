@@ -27,8 +27,6 @@ fake = Faker(["en_US", "fr_FR"])
 
 
 def random_last_seen(created_at: datetime):
-    if random.random() >= 0.9:
-        return None
     return min(created_at + timedelta(days=random.randint(0, 700)), datetime.now())
 
 
@@ -72,7 +70,7 @@ def generate_user(max_attempts: int = 10):
                     password_hash,
                     email_verified,
                     created_at.isoformat(sep=" "),
-                    last_seen_at.isoformat(sep=" ") if last_seen_at else None,
+                    last_seen_at.isoformat(sep=" "),
                 ),
             )
 
