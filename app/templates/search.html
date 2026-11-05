@@ -32,21 +32,7 @@
             </div>
         </fieldset>
         <fieldset class="row g-2 mb-3 align-items-end">
-            <div class="col-6 col-md-auto">
-                <label class="form-label" for="sort_by">Sort by</label>
-                <select class="form-select" id="sort_by" name="sort_by">
-                    {% for value, label in [('smart', 'Smart match'), ('age', 'Age'), ('location', 'Distance'), ('popularity', 'Fame rating'), ('tags', 'Shared tags')] %}
-                        <option value="{{ value }}" {% if args.get('sort_by', 'smart') == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-6 col-md-auto">
-                <label class="form-label" for="order">Order</label>
-                <select class="form-select" id="order" name="order">
-                    <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
-                    <option value="desc" {% if args.get('order', 'asc') == 'desc' %}selected{% endif %}>Descending</option>
-                </select>
-            </div>
+            {% include 'components/filter_form.html' %}
         </fieldset>
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-danger">Search</button>
