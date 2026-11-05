@@ -1,0 +1,31 @@
+{# Most used tags as native suggestions for a comma-separated tags input
+   (give the input list="tag-suggestions"). #}
+<datalist id="tag-suggestions">
+    {% for tag in popular_tags %}
+    <option value="{{ tag }}">
+    {% endfor %}
+</datalist>
+<script>
+  // A datalist matches the whole input value, so for "music, hik" we rewrite
+  // each option as "music, <tag>": the browser then completes the last entry,
+  // and tags already typed are not suggested again.
+  (function () {
+    const list = document.getElementById('tag-suggestions');
+    const input = document.querySelector('input[list="tag-suggestions"]');
+    if (!list || !input) return;
+    const tags = Array.from(list.options, (o) => o.value);
+
+    function refresh() {
+      const parts = input.value.split(',');
+      parts.pop();
+      const chosen = new Set(parts.map((t) => t.trim().toLowerCase()).filter(Boolean));
+      const prefix = parts.length ? parts.map((t) => t.trim()).join(', ') + ', ' : '';
+      list.replaceChildren(...tags
+        .filter((t) => !chosen.has(t))
+        .map((t) => new Option('', prefix + t)));
+    }
+
+    input.addEventListener('input', refresh);
+    input.addEventListener('focus', refresh);
+  })();
+</script>

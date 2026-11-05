@@ -34,6 +34,7 @@ from app.utils import (
     is_blocked_between,
     is_match,
     login_required,
+    popular_tags,
     update_popularity,
 )
 
@@ -203,6 +204,7 @@ def edit_profile():
         profile=profile,
         pending_email_change=pending_email_change,
         max_upload_bytes=current_app.config["MAX_CONTENT_LENGTH"],
+        popular_tags=popular_tags(),
     )
 
 LOCATION_FORM_KEYS = ("city", "neighborhood", "latitude", "longitude")

@@ -4,7 +4,7 @@ from functools import wraps
 from email_validator import validate_email
 from flask import current_app, g, request, session
 
-from app.db import execute, query_one
+from app.db import execute, query_all, query_one
 from app.security import csrf_token_signature_valid, generate_csrf_token
 
 POPULARITY_LIKE_WEIGHT = 10
@@ -185,3 +185,20 @@ def time_ago(iso_value, now=None):
         if count >= 1:
             return f"{count} {unit}{'s' if count > 1 else ''} ago"
     return "just now"
+
+
+def popular_tags(limit: int = 20) -> list[str]:
+    """Most used tag names (ties broken alphabetically), offered as
+    <datalist> suggestions on the profile edit and search tag fields."""
+    rows = query_all(
+        """
+        SELECT t.name
+        FROM tags t
+        JOIN user_tags ut ON ut.tag_id = t.id
+        GROUP BY t.id
+        ORDER BY COUNT(*) DESC, t.name ASC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [r["name"] for r in rows]
