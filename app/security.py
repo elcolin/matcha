@@ -7,6 +7,8 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 from zxcvbn import zxcvbn
 
+from app.config import UserConfig
+
 def utcnow_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -31,6 +33,9 @@ def validate_password_strength(password: str):
     #general checks
     if len(password) < 10:
         return False, "Password must be at least 10 characters long"
+    # Checked before zxcvbn, whose cost grows with the length.
+    if len(password) > UserConfig.PASSWORD_MAX_LENGTH:
+        return False, f"Password must be at most {UserConfig.PASSWORD_MAX_LENGTH} characters long"
     if not any(c.isupper() for c in password):
         return False, "Password must contain an uppercase letter"
     if not any(c.islower() for c in password):

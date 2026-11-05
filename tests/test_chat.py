@@ -92,9 +92,28 @@ class ChatMessageNotificationsTests(unittest.TestCase):
         self.assertEqual(len(notifications), 1)
         self.assertEqual(notifications[0]["type"], "message_received")
 
-    def test_offline_receiver_gets_message_in_history(self):
+    def test_send_message_rejects_overlong_content(self):
+        from app.config import UserConfig
+        from app.db import query_one
+
         a_id = self._create_user("sam")
-        b_id = self._create_user("tina")
+        b_id = self._create_user("tess")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+
+        resp = self.client.post(
+            f"/chat/{b_id}/send",
+            json={"content": "x" * (UserConfig.MESSAGE_MAX_LENGTH + 1)},
+            headers=self._csrf_headers(),
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        with self.app.app_context():
+            self.assertEqual(query_one("SELECT COUNT(*) AS c FROM messages")["c"], 0)
+
+    def test_send_message_does_not_notify_receiver_when_actively_viewing_chat(self):
+        a_id = self._create_user("quinn")
+        b_id = self._create_user("ruth")
         self._make_match(a_id, b_id)
         self._login_as(a_id)
 

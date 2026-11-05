@@ -17,7 +17,9 @@ from app.security import (
     validate_password_strength,
     verify_password,
 )
+from app.config import UserConfig
 from app.utils import APIError, login_required, normalize_email
+from app.validation import clean_text, validate_username
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -110,7 +112,14 @@ def register():
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
     try:
-        email = normalize_email(data["email"])
+        username = validate_username(data.get("username"))
+        first_name = clean_text(data.get("first_name"), "First name", UserConfig.NAME_MAX_LENGTH, required=True)
+        last_name = clean_text(data.get("last_name"), "Last name", UserConfig.NAME_MAX_LENGTH, required=True)
+    except APIError as err:
+        return render_template("register.html", error=err.message)
+
+    try:
+        email = normalize_email(str(data["email"]))
     except EmailNotValidError:
         return render_template("register.html", error="Invalid email address")
 
@@ -122,7 +131,6 @@ def register():
     if not is_ok:
         return render_template("register.html", error=reason)
 
-    username = data["username"].strip()
     # Usernames are public (shown on profiles), so reporting a taken one leaks nothing.
     if query_one("SELECT 1 FROM users WHERE username = ?", (username,)):
         return render_template("register.html", error="Username is already taken")
@@ -131,7 +139,7 @@ def register():
         cur = execute(
             "INSERT INTO users (email, username, last_name, first_name, password_hash) VALUES (?, ?, ?, ?, ?)",
             (email, username,
-             data["last_name"].strip(), data["first_name"].strip(),
+             last_name, first_name,
              hash_password(password)),
         )
     except sqlite3.IntegrityError:
@@ -140,7 +148,7 @@ def register():
     if cur is not None:
         user_id = cur.lastrowid
         _ensure_profile_exists(user_id)
-        send_verification_email(user_id, email, data["first_name"].strip())
+        send_verification_email(user_id, email, first_name)
     else:
         # Email already registered: answer exactly like a successful sign-up so the
         # form cannot be used to enumerate accounts, and warn the real owner instead.
@@ -321,7 +329,7 @@ def confirm_password_reset(token):
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                       <label class="form-label">New Password</label>
-                      <input name="password" class="form-control" type="password" required />
+                      <input name="password" class="form-control" type="password" minlength="10" maxlength="128" required />
                     </div>
                     <button type="submit" class="btn btn-danger w-100 mb-3">Reset password</button>
                   </form>

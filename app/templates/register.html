@@ -16,16 +16,16 @@
                     <div class="row g-3 mb-3">
                         <div class="col">
                             <label for="first_name" class="form-label">First Name</label>
-                            <input id="first_name" name="first_name" class="form-control" type="text" required />
+                            <input id="first_name" name="first_name" class="form-control" type="text" maxlength="50" required />
                         </div>
                         <div class="col">
                             <label for="last_name" class="form-label">Last Name</label>
-                            <input id="last_name" name="last_name" class="form-control" type="text" required />
+                            <input id="last_name" name="last_name" class="form-control" type="text" maxlength="50" required />
                         </div>
                     </div>
                     <div class="mb-3">
                         <label for="username" class="form-label">Username</label>
-                        <input id="username" name="username" class="form-control" type="text" required />
+                        <input id="username" name="username" class="form-control" type="text" minlength="3" maxlength="30" pattern="[A-Za-z0-9_.\-]{3,30}" title="3 to 30 characters: letters, digits, dots, hyphens or underscores" required />
                     </div>
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
@@ -34,11 +34,11 @@
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
                         <div class="form-text mb-1">Min 8 chars, one capital, one special character.</div>
-                        <input id="password" name="password" class="form-control" type="password" autocomplete="new-password" required />
+                        <input id="password" name="password" class="form-control" type="password" autocomplete="new-password" minlength="10" maxlength="128" required />
                     </div>
                     <div class="mb-4">
                         <label for="confirm" class="form-label">Confirm Password</label>
-                        <input id="confirm" name="confirm" class="form-control" type="password" autocomplete="new-password" required />
+                        <input id="confirm" name="confirm" class="form-control" type="password" autocomplete="new-password" minlength="10" maxlength="128" required />
                     </div>
                     <button type="submit" class="btn btn-danger w-100 mb-3">Create Account</button>
                 </form>

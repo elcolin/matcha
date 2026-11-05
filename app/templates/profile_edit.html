@@ -14,11 +14,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="first_name">First name</label>
-                                <input class="form-control" type="text" id="first_name" name="first_name" value="{{ profile.first_name }}" required>
+                                <input class="form-control" type="text" id="first_name" name="first_name" value="{{ profile.first_name }}" maxlength="50" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="last_name">Last name</label>
-                                <input class="form-control" type="text" id="last_name" name="last_name" value="{{ profile.last_name }}" required>
+                                <input class="form-control" type="text" id="last_name" name="last_name" value="{{ profile.last_name }}" maxlength="50" required>
                             </div>
                         </div>
 
@@ -86,11 +86,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="city">City</label>
-                                <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}">
+                                <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}" maxlength="100">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="neighborhood">Neighborhood (optional)</label>
-                                <input class="form-control" type="text" id="neighborhood" name="neighborhood" value="{{ profile.neighborhood or '' }}">
+                                <input class="form-control" type="text" id="neighborhood" name="neighborhood" value="{{ profile.neighborhood or '' }}" maxlength="100">
                             </div>
                         </div>
 
