@@ -236,6 +236,44 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
 
         self.assertEqual(self._notifications_for(b_id), [])
 
+    def test_send_message_without_csrf_token_is_rejected_with_json_error(self):
+        a_id = self._create_user("sam")
+        b_id = self._create_user("tina")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+
+        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "forged"})
+        self.assertEqual(resp.status_code, 403)
+        # The chat page shows this message to the sender, so it must stay JSON.
+        self.assertEqual(resp.get_json(), {"error": "Invalid or missing CSRF token"})
+
+        from app.db import query_all
+
+        with self.app.app_context():
+            rows = query_all("SELECT * FROM messages WHERE sender_id = ?", (a_id,))
+        self.assertEqual(rows, [])
+
+    def _chat_page_html(self):
+        a_id = self._create_user("uma")
+        b_id = self._create_user("victor")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+        return self.client.get(f"/chat/view/{b_id}").get_data(as_text=True)
+
+    def test_chat_page_renders_sent_message_only_after_server_accepts_it(self):
+        import re
+
+        html = self._chat_page_html()
+        handler = re.search(r"form\.addEventListener\('submit', async \(e\) => \{(.*?)\n  \}\);", html, re.DOTALL)
+        self.assertIsNotNone(handler)
+        body = handler.group(1)
+        self.assertIn("response.ok", body)
+        self.assertLess(body.index("response.ok"), body.index("renderMessage("))
+
+    def test_chat_page_has_accessible_send_error_area(self):
+        html = self._chat_page_html()
+        self.assertRegex(html, r'id="send-error"[^>]*role="alert"')
+
 
 if __name__ == "__main__":
     unittest.main()

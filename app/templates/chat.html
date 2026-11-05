@@ -48,8 +48,9 @@
                                        id="message-input"
                                        placeholder="Type a message..."
                                        required>
-                                <button type="submit" class="btn btn-danger">Send</button>
+                                <button type="submit" class="btn btn-danger" id="send-button">Send</button>
                             </form>
+                            <p id="send-error" class="text-danger small mt-2 mb-0" role="alert" hidden></p>
                         </div>
                     </div>
                 {% else %}
@@ -110,19 +111,43 @@
       rows.forEach(renderMessage)
   }
 
-  form.addEventListener('submit', (e) => {
+  const sendButton = document.getElementById('send-button');
+  const sendError = document.getElementById('send-error');
+
+  function showSendError(message) {
+    sendError.textContent = message;
+    sendError.hidden = false;
+  }
+
+  // Only display a sent message once the server has stored it, so a rejected
+  // send (CSRF, unmatched, blocked...) never looks delivered.
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const content = input.value.trim();
     if (!content) return;
+    sendError.hidden = true;
+    sendButton.disabled = true;
+    try {
+      const response = await fetch(partnerUrl(CHAT_SEND_URL), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        showSendError(data.error || 'Message could not be sent.');
+        return;
+      }
       renderMessage({ sender_id: currentUserId, content });
       input.value = '';
-    fetch(partnerUrl(CHAT_SEND_URL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-      body: JSON.stringify({ content }),
-    })
+    } catch (_) {
+      showSendError('Network error: message could not be sent.');
+    } finally {
+      sendButton.disabled = false;
+      input.focus();
+    }
   });
-  
+
   function connectStream() {
     const stream = new EventSource(`${CHAT_STREAM_URL}?since=${lastMessageId}`);
     stream.addEventListener('message', (event) => {
@@ -138,7 +163,10 @@
   // Let the server know this conversation is actively being viewed, so the
   // recipient doesn't get a redundant notification for messages they see live.
   function pingPresence() {
-    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } });
+    // Best effort: a missed ping only means a redundant notification, and the
+    // next one retries, so failures are ignored rather than surfaced.
+    fetch(partnerUrl(CHAT_PRESENCE_URL), { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
+      .catch(() => {});
   }
   pingPresence();
   setInterval(pingPresence, 8000);
