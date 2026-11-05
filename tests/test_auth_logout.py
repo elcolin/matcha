@@ -14,6 +14,7 @@ from app import create_app
 from app.config import Config
 from app.db import execute, query_one
 from app.security import hash_password
+from tests.helpers import complete_profile
 
 PASSWORD = "StrongPass123!"
 
@@ -39,6 +40,7 @@ class LogoutTests(unittest.TestCase):
                 "INSERT OR IGNORE INTO profiles (user_id, sexual_preference, bio) VALUES (?, 'everyone', '')",
                 (self.alice,),
             )
+            complete_profile(self.alice)
 
         self.client.get("/login")
         self.client.post(
