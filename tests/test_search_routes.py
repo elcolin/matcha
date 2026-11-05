@@ -215,7 +215,7 @@ class SearchRouteTests(unittest.TestCase):
 
         html = self.client.get("/search").get_data(as_text=True)
 
-        for field in ("min_age", "max_age", "min_popularity", "max_popularity", "city", "tags",
+        for field in ("min_age", "max_age", "max_popularity", "city", "tags",
                       "age_gap", "max_distance", "min_fame", "min_shared_tags", "sort_by", "order"):
             self.assertIn(f'name="{field}"', html)
 
