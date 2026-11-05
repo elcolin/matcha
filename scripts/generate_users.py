@@ -11,14 +11,14 @@ from app.config import UserConfig
 from app import create_app
 from app.db import execute
 
-API_IMAGES1 = os.getenv("API_IMAGES1")
+API_IMAGES = os.getenv("API_IMAGES")
 PLACEHOLDER_PATH = os.getenv("PLACEHOLDER_PATH", "/static/images/")
 
 """
 Usage:
     python scripts/generate_users.py [count]                  # Generate users (default: 500)
     python scripts/generate_users.py cleanup START END        # Delete users START id - END id
-    python scripts/generate_users.py cleanall                 # Delete all seeded data
+    python scripts/generate_users.py cleanall                 # Delete all user data
     python scripts/generate_users.py 20 ai                    # Generate users with AI bios (default: random text)
 """
 
@@ -114,11 +114,10 @@ def generate_profile(user_id: int, ai: bool = False):
     latitude_raw, longitude_raw, city, _country, _timezone = fake.local_latlng(country_code="FR")
     latitude = float(latitude_raw)
     longitude = float(longitude_raw)
-    jitter_lat = latitude + random.uniform(-0.03, 0.03)
-    jitter_lng = longitude + random.uniform(-0.03, 0.03)
     neighborhood = fake.street_name()
-    latitude = jitter_lat if location_consent_gps else None
-    longitude = jitter_lng if location_consent_gps else None
+    if location_consent_gps:
+        latitude += random.uniform(-0.03, 0.03)
+        longitude += random.uniform(-0.03, 0.03)
 
     execute(
         """INSERT INTO profiles
@@ -238,10 +237,10 @@ def generate_photos(count):
         return []
 
     photos = []
-    if API_IMAGES1:
+    if API_IMAGES:
         try:
             response = requests.get(
-                API_IMAGES1,
+                API_IMAGES,
                 params={
                     "taxon_id": 3,
                     "has[]": "photos",
@@ -332,7 +331,7 @@ def clean_all():
     execute("DELETE FROM tags")
     for name in ("users", "photos", "tags"):
         reset_sequence(name)
-    print("Deleted all seeded data")
+    print("Deleted all user data")
 
 
 if __name__ == "__main__":
