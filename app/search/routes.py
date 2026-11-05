@@ -1,7 +1,7 @@
 from flask import Blueprint, g, render_template, request
 from app.db import query_one
 from app.match.routes import MISSING_DISTANCE_KM, candidate_profiles
-from app.utils import login_required
+from app.utils import login_required, popular_tags
 
 search_bp = Blueprint("search", __name__)
 
@@ -69,9 +69,20 @@ def _sort(items, args):
         "popularity": lambda p: p.get("popularity_score", 0),
         "tags": lambda p: p["shared_tags_count"],
     }
-    descending = args.get("order", "desc") != "asc"
+    descending = args.get("order", "asc") != "asc"
     sort_by = args.get("sort_by", "smart")
-    if sort_by in keys:
+    if sort_by == "location":
+        known = [
+            p for p in items
+            if p.get("distance_km") is not None and p["distance_km"] < MISSING_DISTANCE_KM
+        ]
+        unknown = [
+            p for p in items
+            if p.get("distance_km") is None or p["distance_km"] >= MISSING_DISTANCE_KM
+        ]
+        known.sort(key=keys[sort_by], reverse=descending)
+        items[:] = known + unknown
+    elif sort_by in keys:
         items.sort(key=keys[sort_by], reverse=descending)
     elif not descending:  # "smart": candidate_profiles() ranks best matches first
         items.reverse()
@@ -104,4 +115,5 @@ def search_view():
         profiles=profiles,
         searched=searched,
         args=request.args,
+        popular_tags=popular_tags(),
     )

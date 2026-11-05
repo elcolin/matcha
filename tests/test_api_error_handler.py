@@ -14,6 +14,7 @@ from app import create_app
 from app.config import Config
 from app.db import execute
 from app.security import hash_password
+from tests.helpers import complete_profile
 
 PASSWORD = "StrongPass123!"
 
@@ -44,6 +45,7 @@ class APIErrorHandlerTests(unittest.TestCase):
         with self.app.app_context():
             self.alice = _make_verified_user("alice@example.com", "alice")
             self.bob = _make_verified_user("bob@example.com", "bob")
+            complete_profile(self.alice)
 
         self.client.get("/login")
         self.client.post(
@@ -65,18 +67,18 @@ class APIErrorHandlerTests(unittest.TestCase):
 
     def _like_form(self, referrer):
         return self.client.post(
-            f"/profile/{self.bob}/like",
+            f"/profile/{self.alice}/like",
             data={"csrf_token": self._csrf()},
             headers={"Referer": referrer},
         )
 
     def test_form_post_error_flashes_and_redirects_to_referrer(self):
-        referrer = f"http://localhost/profile/{self.bob}"
+        referrer = f"http://localhost/profile/{self.alice}"
         response = self._like_form(referrer)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["Location"], f"/profile/{self.bob}")
-        self.assertIn(("error", "You need a profile photo to like someone"), self._flashes())
+        self.assertEqual(response.headers["Location"], f"/profile/{self.alice}")
+        self.assertIn(("error", "Cannot like yourself"), self._flashes())
 
     def test_form_post_error_ignores_foreign_referrer(self):
         response = self._like_form("https://evil.example.com/phish")
@@ -85,28 +87,28 @@ class APIErrorHandlerTests(unittest.TestCase):
         self.assertEqual(response.headers["Location"], "/")
 
     def test_form_post_error_without_referrer_redirects_home(self):
-        response = self.client.post(f"/profile/{self.bob}/like", data={"csrf_token": self._csrf()})
+        response = self.client.post(f"/profile/{self.alice}/like", data={"csrf_token": self._csrf()})
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], "/")
 
     def test_json_post_error_still_returns_json(self):
         response = self.client.post(
-            f"/profile/{self.bob}/like", json={}, headers={"X-CSRFToken": self._csrf()}
+            f"/profile/{self.alice}/like", json={}, headers={"X-CSRFToken": self._csrf()}
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {"error": "You need a profile photo to like someone"})
+        self.assertEqual(response.get_json(), {"error": "Cannot like yourself"})
 
     def test_form_post_with_bad_csrf_is_rejected_not_redirected(self):
-        response = self.client.post(f"/profile/{self.bob}/like", data={"csrf_token": "forged"})
+        response = self.client.post(f"/profile/{self.alice}/like", data={"csrf_token": "forged"})
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json(), {"error": "Invalid or missing CSRF token"})
 
     def test_unauthenticated_form_post_is_rejected_not_redirected(self):
         self.client.post("/logout", data={"csrf_token": self._csrf()})
-        response = self.client.post(f"/profile/{self.bob}/like", data={"csrf_token": self._csrf()})
+        response = self.client.post(f"/profile/{self.alice}/like", data={"csrf_token": self._csrf()})
 
         self.assertEqual(response.status_code, 401)
 

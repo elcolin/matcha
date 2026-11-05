@@ -4,9 +4,10 @@ import tempfile
 import unittest
 
 from app import config as app_config
+from tests.helpers import complete_profile
 
 
-class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
+class ChatMessageNotificationsTests(unittest.TestCase):
     def setUp(self):
         self.db_fd, self.db_path = tempfile.mkstemp()
         app_config.Config.DATABASE_PATH = self.db_path
@@ -49,6 +50,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
                 (user_id, token),
             )
+            complete_profile(user_id)
         with self.client.session_transaction() as sess:
             sess["user_id"] = user_id
             sess["session_token"] = token
@@ -66,29 +68,6 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self._like(a_id, b_id)
         self._like(b_id, a_id)
 
-    def _block(self, blocker_id, blocked_id):
-        from app.db import execute
-
-        with self.app.app_context():
-            execute(
-                "INSERT INTO blocks (blocker_id, blocked_id) VALUES (?, ?)",
-                (blocker_id, blocked_id),
-            )
-
-    def _set_presence(self, user_id, partner_id, seconds_ago):
-        from app.db import execute
-
-        with self.app.app_context():
-            execute(
-                """
-                INSERT INTO chat_presence (user_id, partner_id, updated_at)
-                VALUES (?, ?, datetime('now', ?))
-                ON CONFLICT(user_id, partner_id)
-                DO UPDATE SET updated_at = excluded.updated_at
-                """,
-                (user_id, partner_id, f"-{seconds_ago} seconds"),
-            )
-
     def _notifications_for(self, user_id):
         from app.db import query_all
 
@@ -100,118 +79,7 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         with self.client.session_transaction() as sess:
             return {"X-CSRFToken": sess["csrf_token"]}
 
-    def test_is_viewing_chat_true_for_fresh_presence(self):
-        from app.chat.routes import _is_viewing_chat
-
-        a_id = self._create_user("alice")
-        b_id = self._create_user("bob")
-        self._set_presence(a_id, b_id, seconds_ago=1)
-
-        with self.app.app_context():
-            self.assertTrue(_is_viewing_chat(a_id, b_id))
-
-    def test_is_viewing_chat_false_for_stale_presence(self):
-        from app.chat.routes import _is_viewing_chat
-
-        a_id = self._create_user("carol")
-        b_id = self._create_user("dave")
-        self._set_presence(a_id, b_id, seconds_ago=30)
-
-        with self.app.app_context():
-            self.assertFalse(_is_viewing_chat(a_id, b_id))
-
-    def test_is_viewing_chat_false_when_no_presence_row(self):
-        from app.chat.routes import _is_viewing_chat
-
-        a_id = self._create_user("eve")
-        b_id = self._create_user("frank")
-
-        with self.app.app_context():
-            self.assertFalse(_is_viewing_chat(a_id, b_id))
-
-    def test_presence_ping_upserts_row_for_matched_users(self):
-        a_id = self._create_user("gina")
-        b_id = self._create_user("harry")
-        self._make_match(a_id, b_id)
-        self._login_as(a_id)
-
-        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
-        self.assertEqual(resp.status_code, 200)
-
-        from app.chat.routes import _is_viewing_chat
-
-        with self.app.app_context():
-            self.assertTrue(_is_viewing_chat(a_id, b_id))
-
-        # Pinging again should update (not duplicate) the row.
-        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
-        self.assertEqual(resp.status_code, 200)
-
-        from app.db import query_all
-
-        with self.app.app_context():
-            rows = query_all(
-                "SELECT * FROM chat_presence WHERE user_id = ? AND partner_id = ?",
-                (a_id, b_id),
-            )
-        self.assertEqual(len(rows), 1)
-
-    def test_presence_ping_without_csrf_token_is_rejected(self):
-        a_id = self._create_user("csrfless")
-        b_id = self._create_user("partner")
-        self._make_match(a_id, b_id)
-        self._login_as(a_id)
-
-        resp = self.client.post(f"/chat/{b_id}/presence")
-        self.assertEqual(resp.status_code, 403)
-
-        from app.db import query_all
-
-        with self.app.app_context():
-            rows = query_all("SELECT * FROM chat_presence WHERE user_id = ?", (a_id,))
-        self.assertEqual(rows, [])
-
-    def test_chat_page_presence_ping_sends_csrf_header(self):
-        import re
-
-        a_id = self._create_user("pinger")
-        b_id = self._create_user("pinged")
-        self._make_match(a_id, b_id)
-        self._login_as(a_id)
-
-        html = self.client.get(f"/chat/view/{b_id}").get_data(as_text=True)
-
-        ping = re.search(r"function pingPresence\(\)\s*\{(.*?)\n  \}", html, re.DOTALL)
-        self.assertIsNotNone(ping)
-        self.assertIn("CHAT_PRESENCE_URL", ping.group(1))
-        self.assertIn("'X-CSRFToken': csrfToken", ping.group(1))
-
-    def test_presence_ping_requires_login(self):
-        a_id = self._create_user("iris")
-        b_id = self._create_user("jack")
-
-        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
-        self.assertEqual(resp.status_code, 401)
-
-    def test_presence_ping_rejected_when_not_matched(self):
-        a_id = self._create_user("kevin")
-        b_id = self._create_user("laura")
-        self._login_as(a_id)
-
-        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
-        self.assertEqual(resp.status_code, 403)
-
-    def test_presence_ping_rejected_when_blocked(self):
-        a_id = self._create_user("mia")
-        b_id = self._create_user("noah")
-        self._make_match(a_id, b_id)
-        self._block(b_id, a_id)
-        self._login_as(a_id)
-
-        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
-        self.assertEqual(resp.status_code, 403)
-
-    def test_send_message_notifies_receiver_when_not_viewing_chat(self):
+    def test_send_message_notifies_receiver(self):
         a_id = self._create_user("olive")
         b_id = self._create_user("pete")
         self._make_match(a_id, b_id)
@@ -224,18 +92,32 @@ class ChatPresenceAndMessageNotificationsTests(unittest.TestCase):
         self.assertEqual(len(notifications), 1)
         self.assertEqual(notifications[0]["type"], "message_received")
 
-    def test_send_message_does_not_notify_receiver_when_actively_viewing_chat(self):
-        a_id = self._create_user("quinn")
-        b_id = self._create_user("ruth")
+    def test_offline_receiver_gets_message_in_history(self):
+        a_id = self._create_user("sam")
+        b_id = self._create_user("tina")
         self._make_match(a_id, b_id)
-        self._set_presence(b_id, a_id, seconds_ago=1)
         self._login_as(a_id)
 
-        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "hi there"}, headers=self._csrf_headers())
+        resp = self.client.post(f"/chat/{b_id}/send", json={"content": "see you"}, headers=self._csrf_headers())
         self.assertEqual(resp.status_code, 200)
 
-        self.assertEqual(self._notifications_for(b_id), [])
+        # b was offline when the message was sent; it is there on their next visit.
+        self._login_as(b_id)
+        rows = self.client.get(f"/chat/{a_id}").get_json()
+        self.assertEqual([r["content"] for r in rows], ["see you"])
 
+    def test_presence_route_removed(self):
+        a_id = self._create_user("uma")
+        b_id = self._create_user("vic")
+        self._make_match(a_id, b_id)
+        self._login_as(a_id)
+
+        resp = self.client.post(f"/chat/{b_id}/presence", headers=self._csrf_headers())
+        self.assertEqual(resp.status_code, 404)
+
+        html = self.client.get(f"/chat/view/{b_id}").get_data(as_text=True)
+        self.assertNotIn("pingPresence", html)
+        self.assertNotIn("/presence", html)
 
 if __name__ == "__main__":
     unittest.main()
