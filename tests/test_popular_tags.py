@@ -6,7 +6,7 @@ import unittest
 from app.config import Config
 from app.db import execute
 from app.utils import popular_tags
-from tests.helpers import DBTestCase
+from tests.helpers import DBTestCase, complete_profile
 
 
 def _tag_user(user_id, *names):
@@ -62,6 +62,7 @@ class TagSuggestionsRenderingTests(unittest.TestCase):
             self.user_id = cur.lastrowid
             execute("INSERT INTO profiles (user_id, age) VALUES (?, 30)", (self.user_id,))
             _tag_user(self.user_id, "birdwatching", "<script>x</script>")
+            complete_profile(self.user_id)
             token = secrets.token_hex(16)
             execute(
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
