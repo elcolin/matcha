@@ -105,13 +105,13 @@ class APIErrorHandlerTests(unittest.TestCase):
         self.assertEqual(response.get_json(), {"error": "Invalid or missing CSRF token"})
 
     def test_unauthenticated_form_post_is_rejected_not_redirected(self):
-        self.client.get("/logout")
+        self.client.post("/logout", data={"csrf_token": self._csrf()})
         response = self.client.post(f"/profile/{self.bob}/like", data={"csrf_token": self._csrf()})
 
         self.assertEqual(response.status_code, 401)
 
     def test_get_error_still_returns_json(self):
-        self.client.get("/logout")
+        self.client.post("/logout", data={"csrf_token": self._csrf()})
         response = self.client.get("/notifications/unread-count")
 
         self.assertEqual(response.status_code, 401)
