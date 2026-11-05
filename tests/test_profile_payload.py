@@ -9,6 +9,7 @@ from app.db import execute
 from app.match.routes import candidate_profiles
 from app.profile.routes import _pending_email_change, _profile_payload
 from tests.helpers import DBTestCase
+from tests.helpers import complete_profile_for_username
 
 
 class ProfilePayloadEmailTests(DBTestCase):
@@ -162,6 +163,8 @@ class ProfileDetailJsonDoesNotLeakEmailTests(unittest.TestCase):
         os.remove(self.db_path)
 
     def _login_and_get_token(self, username):
+        with self.app.app_context():
+            complete_profile_for_username(username)
         html = self.client.get("/login").get_data(as_text=True)
         token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
         self.client.post(

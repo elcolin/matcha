@@ -5,6 +5,7 @@ import unittest
 
 from app import security
 from app.config import Config
+from tests.helpers import complete_profile_for_username
 
 
 class ProfileReportTestCase(unittest.TestCase):
@@ -62,6 +63,8 @@ class ProfileReportTestCase(unittest.TestCase):
             return user_id
 
     def _login_and_get_token(self, username):
+        with self.app.app_context():
+            complete_profile_for_username(username)
         html = self.client.get("/login").get_data(as_text=True)
         token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
         self.client.post(
