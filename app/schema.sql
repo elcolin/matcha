@@ -68,7 +68,6 @@ CREATE TABLE IF NOT EXISTS profiles (
     location_consent_gps INTEGER NOT NULL DEFAULT 0,
     popularity_score INTEGER NOT NULL DEFAULT 0,
     age INTEGER,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -143,15 +142,6 @@ CREATE TABLE IF NOT EXISTS messages (
     read_at TEXT,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS chat_presence (
-    user_id INTEGER NOT NULL,
-    partner_id INTEGER NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, partner_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (partner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS notifications (

@@ -54,9 +54,10 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label" for="tags">Interests (comma separated, up to 10, 30 characters each)</label>
-                            <input class="form-control" type="text" id="tags" name="tags"
-                                   value="{{ profile.tags | join(', ') }}" placeholder="music, hiking, coffee">
+                            <label class="form-label" for="tags">Interests (comma separated)</label>
+                            <input class="form-control" type="text" id="tags" name="tags" list="tag-suggestions"
+                                   autocomplete="off" value="{{ profile.tags | join(', ') }}" placeholder="music, hiking, coffee">
+                            {% include "components/tag_suggestions.html" %}
                         </div>
 
                         <div class="mb-3">

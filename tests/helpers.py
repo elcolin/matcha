@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from flask import Flask
 
-from app.db import close_db, execute, get_db
+from app.db import close_db, execute, get_db, query_one
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "app" / "schema.sql"
 
@@ -79,3 +79,41 @@ class DBTestCase(unittest.TestCase):
             (user_id,),
         )
         return user_id
+
+
+def complete_profile(user_id, *, profile_photo=True):
+    """Fill the fields app.utils.missing_profile_fields requires, keeping any
+    value a test already set, so a logged-in test user passes the
+    incomplete-profile gate (app/__init__.py). Needs an active app context.
+    """
+    execute(
+        """
+        UPDATE profiles
+        SET gender = COALESCE(gender, 'female'),
+            sexual_preference = COALESCE(sexual_preference, 'everyone'),
+            bio = COALESCE(NULLIF(TRIM(bio), ''), 'Test bio'),
+            age = COALESCE(age, 30),
+            city = COALESCE(NULLIF(TRIM(city), ''), 'Paris')
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    )
+    if not query_one("SELECT 1 FROM user_tags WHERE user_id = ?", (user_id,)):
+        execute("INSERT OR IGNORE INTO tags (name) VALUES ('test-tag')")
+        execute(
+            "INSERT INTO user_tags (user_id, tag_id) SELECT ?, id FROM tags WHERE name = 'test-tag'",
+            (user_id,),
+        )
+    if profile_photo:
+        execute(
+            """
+            INSERT INTO photos (user_id, url, is_profile_photo)
+            SELECT ?, '/static/uploads/test-profile.png', 1
+            WHERE NOT EXISTS (SELECT 1 FROM photos WHERE user_id = ? AND is_profile_photo = 1)
+            """,
+            (user_id, user_id),
+        )
+
+
+def complete_profile_for_username(username, **kwargs):
+    complete_profile(query_one("SELECT id FROM users WHERE username = ?", (username,))["id"], **kwargs)

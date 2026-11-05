@@ -34,6 +34,7 @@ from app.utils import (
     is_blocked_between,
     is_match,
     login_required,
+    popular_tags,
     update_popularity,
 )
 from app.validation import clean_text, parse_age, parse_tags
@@ -204,6 +205,7 @@ def edit_profile():
         profile=profile,
         pending_email_change=pending_email_change,
         max_upload_bytes=current_app.config["MAX_CONTENT_LENGTH"],
+        popular_tags=popular_tags(),
     )
 
 LOCATION_FORM_KEYS = ("city", "neighborhood", "latitude", "longitude")
@@ -336,8 +338,7 @@ def _update_profile(user_id: int, data):
             neighborhood = CASE WHEN ? THEN ? ELSE neighborhood END,
             latitude = CASE WHEN ? THEN ? ELSE latitude END,
             longitude = CASE WHEN ? THEN ? ELSE longitude END,
-            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END,
-            updated_at = CURRENT_TIMESTAMP
+            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END
         WHERE user_id = ?
         """,
         (

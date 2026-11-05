@@ -1,9 +1,15 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env here (not only in create_app): this module is imported, and its class
+# attributes evaluated, before app/__init__.py gets to call load_dotenv().
+load_dotenv()
+
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+    SECRET_KEY = os.getenv("SECRET_KEY")
     BASE_DIR = Path(__file__).resolve().parent.parent
     DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "instance" / "matcha.db"))
 

@@ -6,9 +6,8 @@ import unittest
 from werkzeug.datastructures import MultiDict
 
 from app.config import Config
-from app.search.routes import _filter
-
-
+from app.search.routes import _filter, _refine, _sort
+from tests.helpers import complete_profile
 class FilterTagsTests(unittest.TestCase):
     def test_no_tag_filter_keeps_all_items(self):
         items = [{"tags": ["coffee"]}, {"tags": []}]
@@ -25,6 +24,81 @@ class FilterTagsTests(unittest.TestCase):
         result = _filter(items, MultiDict({"tags": "Coffee,travel"}))
 
         self.assertEqual([i["id"] for i in result], [1])
+
+
+class RefineTests(unittest.TestCase):
+    def test_no_refine_args_keeps_all_items(self):
+        items = [{"age": 20, "distance_km": 5, "popularity_score": 1, "shared_tags_count": 0}]
+
+        self.assertEqual(_refine(items, MultiDict(), viewer_age=30), items)
+
+    def test_age_gap_is_relative_to_viewer_and_drops_unknown_age(self):
+        items = [{"id": 1, "age": 33}, {"id": 2, "age": 40}, {"id": 3, "age": None}]
+
+        result = _refine(items, MultiDict({"age_gap": "3"}), viewer_age=30)
+
+        self.assertEqual([i["id"] for i in result], [1])
+
+    def test_age_gap_ignored_when_viewer_age_unknown(self):
+        items = [{"id": 1, "age": 33}]
+
+        self.assertEqual(_refine(items, MultiDict({"age_gap": "1"}), viewer_age=None), items)
+
+    def test_max_distance_min_fame_and_min_shared_tags(self):
+        items = [
+            {"id": 1, "distance_km": 10, "popularity_score": 50, "shared_tags_count": 2},
+            {"id": 2, "distance_km": 80, "popularity_score": 50, "shared_tags_count": 2},
+            {"id": 3, "distance_km": 10, "popularity_score": 5, "shared_tags_count": 2},
+            {"id": 4, "distance_km": 10, "popularity_score": 50, "shared_tags_count": 0},
+        ]
+        args = MultiDict({"max_distance": "50", "min_fame": "20", "min_shared_tags": "1"})
+
+        self.assertEqual([i["id"] for i in _refine(items, args, viewer_age=None)], [1])
+
+    def test_negative_values_are_ignored(self):
+        items = [{"id": 1, "age": 50, "distance_km": 10, "popularity_score": 0, "shared_tags_count": 0}]
+        args = MultiDict({"age_gap": "-1", "max_distance": "-5"})
+
+        self.assertEqual(_refine(items, args, viewer_age=20), items)
+
+
+class SortTests(unittest.TestCase):
+    def test_smart_match_descending_keeps_best_matches_first(self):
+        items = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+        args = MultiDict({"sort_by": "smart", "order": "desc"})
+        self.assertEqual([i["id"] for i in _sort(list(items), args)], [1, 2, 3])
+
+    def test_smart_match_ascending_reverses_ranking(self):
+        items = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+        result = _sort(items, MultiDict({"sort_by": "smart", "order": "asc"}))
+
+        self.assertEqual([i["id"] for i in result], [3, 2, 1])
+
+    def test_sort_defaults_to_ascending(self):
+        items = [{"id": 1, "age": 20}, {"id": 2, "age": 30}]
+
+        result = _sort(items, MultiDict({"sort_by": "age"}))
+
+        self.assertEqual([i["id"] for i in result], [1, 2])
+
+    def test_location_sort_keeps_unknown_distances_last_in_both_directions(self):
+        items = [
+            {"id": 1, "distance_km": 10},
+            {"id": 2, "distance_km": 99999},
+            {"id": 3, "distance_km": 80},
+        ]
+
+        descending = _sort(
+            list(items), MultiDict({"sort_by": "location", "order": "desc"})
+        )
+        ascending = _sort(
+            list(items), MultiDict({"sort_by": "location", "order": "asc"})
+        )
+
+        self.assertEqual([i["id"] for i in descending], [3, 1, 2])
+        self.assertEqual([i["id"] for i in ascending], [1, 3, 2])
 
 
 class SearchRouteTests(unittest.TestCase):
@@ -68,6 +142,7 @@ class SearchRouteTests(unittest.TestCase):
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
                 (user_id, token),
             )
+            complete_profile(user_id)
         with self.client.session_transaction() as session:
             session["user_id"] = user_id
             session["session_token"] = token
@@ -121,6 +196,89 @@ class SearchRouteTests(unittest.TestCase):
             descending_html.index(f'href="/profile/{aged_id}"'),
             descending_html.index(f'href="/profile/{missing_age_id}"'),
         )
+
+    def test_home_page_shows_sort_and_filter_form_without_ranges(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn('action="/"', html)
+        for field in ("age_gap", "max_distance", "min_fame", "min_shared_tags", "sort_by", "order"):
+            self.assertIn(f'name="{field}"', html)
+        for range_field in ("min_age", "max_age", "min_popularity", "max_popularity"):
+            self.assertNotIn(f'name="{range_field}"', html)
+
+    def test_search_page_keeps_range_criteria_and_result_filters(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/search").get_data(as_text=True)
+
+        for field in ("min_age", "max_age", "max_popularity", "city", "tags",
+                      "age_gap", "max_distance", "min_fame", "min_shared_tags", "sort_by", "order"):
+            self.assertIn(f'name="{field}"', html)
+
+    def test_search_results_can_be_refined_by_age_gap(self):
+        viewer_id = self._create_user("viewer", 30)
+        close_id = self._create_user("close", 32)
+        far_id = self._create_user("far", 45)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/search?min_age=18&max_age=60&age_gap=5").get_data(as_text=True)
+
+        self.assertIn(f'href="/profile/{close_id}"', html)
+        self.assertNotIn(f'href="/profile/{far_id}"', html)
+
+    def test_home_page_filters_suggestions_by_age_gap(self):
+        viewer_id = self._create_user("viewer", 28)
+        matching_id = self._create_user("matching", 32)
+        too_young_id = self._create_user("too_young", 20)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/?age_gap=5").get_data(as_text=True)
+
+        self.assertIn(f'href="/profile/{matching_id}"', html)
+        self.assertNotIn(f'href="/profile/{too_young_id}"', html)
+
+    def test_home_page_sorts_suggestions_by_age(self):
+        viewer_id = self._create_user("viewer", 28)
+        older_id = self._create_user("older", 40)
+        younger_id = self._create_user("younger", 22)
+        self._login_as(viewer_id)
+
+        asc = self.client.get("/?sort_by=age&order=asc").get_data(as_text=True)
+        self.assertLess(asc.index(f'href="/profile/{younger_id}"'), asc.index(f'href="/profile/{older_id}"'))
+
+        desc = self.client.get("/?sort_by=age&order=desc").get_data(as_text=True)
+        self.assertLess(desc.index(f'href="/profile/{older_id}"'), desc.index(f'href="/profile/{younger_id}"'))
+
+    def test_home_page_shows_empty_message_when_no_profile_matches(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._create_user("other", 30)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/?min_fame=1000").get_data(as_text=True)
+
+        self.assertIn("No profiles match your filters.", html)
+        self.assertIn('href="/">Clear filters</a>', html)
+
+    def test_home_page_without_filters_shows_no_suggestions_message(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn("No suggestions for now.", html)
+        self.assertNotIn("No profiles match your filters.", html)
+
+    def test_search_page_shows_order_options_without_unknown_sort(self):
+        viewer_id = self._create_user("viewer", 28)
+        self._login_as(viewer_id)
+
+        response = self.client.get("/search?sort_by=bogus&order=bogus")
+
+        self.assertEqual(response.status_code, 200)
 
 
 if __name__ == "__main__":
