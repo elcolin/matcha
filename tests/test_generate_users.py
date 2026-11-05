@@ -48,6 +48,10 @@ class GenerateUserTests(unittest.TestCase):
             db.execute("INSERT INTO profiles (user_id) VALUES (?)", (user["id"],))
 
         self.assertEqual(user["id"], 331)
+        row = db.execute(
+            "SELECT last_seen_at FROM users WHERE id = ?", (user["id"],)
+        ).fetchone()
+        self.assertIsNotNone(row[0])
         db.close()
 
 
