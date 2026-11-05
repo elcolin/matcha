@@ -6,7 +6,6 @@
 
     <form method="get" action="{{ url_for('search.search_view') }}" class="mb-4">
         <fieldset class="row g-2 mb-3 align-items-end">
-            <legend class="col-12 h5">Search criteria</legend>
             <div class="col-6 col-md-auto">
                 <label class="form-label" for="min_age">Min age</label>
                 <input class="form-control" type="number" min="18" max="120" id="min_age" name="min_age" value="{{ args.get('min_age', '') }}">
@@ -14,10 +13,6 @@
             <div class="col-6 col-md-auto">
                 <label class="form-label" for="max_age">Max age</label>
                 <input class="form-control" type="number" min="18" max="120" id="max_age" name="max_age" value="{{ args.get('max_age', '') }}">
-            </div>
-            <div class="col-6 col-md-auto">
-                <label class="form-label" for="min_popularity">Min fame rating</label>
-                <input class="form-control" type="number" min="0" id="min_popularity" name="min_popularity" value="{{ args.get('min_popularity', '') }}">
             </div>
             <div class="col-6 col-md-auto">
                 <label class="form-label" for="max_popularity">Max fame rating</label>
@@ -33,7 +28,6 @@
             </div>
         </fieldset>
         <fieldset class="row g-2 mb-3 align-items-end">
-            <legend class="col-12 h5">Filter &amp; sort results</legend>
             {% include 'components/filter_form.html' %}
         </fieldset>
         <div class="d-flex gap-2">
