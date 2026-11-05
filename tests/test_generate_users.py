@@ -297,7 +297,7 @@ class GeneratePhotosTests(unittest.TestCase):
         side_effect=__import__("requests").ConnectionError(),
     )
     def test_uploads_local_placeholder_when_api1_fails(self, mock_get, mock_execute):
-        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+        with patch.object(generate_users, "API_IMAGES", "https://api.test/photos"):
             generate_users.create_photos([{"id": 12}], photos_per_user=1)
 
         mock_get.assert_called_once()
@@ -326,7 +326,7 @@ class GeneratePhotosTests(unittest.TestCase):
             ]
         }
         mock_get.return_value = response
-        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+        with patch.object(generate_users, "API_IMAGES", "https://api.test/photos"):
             urls = generate_users.generate_photos(2)
 
         self.assertEqual(
@@ -351,7 +351,7 @@ class GeneratePhotosTests(unittest.TestCase):
     @patch("scripts.generate_users.get_placeholder", return_value=["/static/images/one.jpg"])
     @patch("scripts.generate_users.requests.get", side_effect=__import__("requests").ConnectionError())
     def test_uses_local_images_when_api1_fails(self, mock_get, mock_placeholder):
-        with patch.object(generate_users, "API_IMAGES1", "https://api.test/photos"):
+        with patch.object(generate_users, "API_IMAGES", "https://api.test/photos"):
             urls = generate_users.generate_photos(1)
 
         self.assertEqual(urls, ["/static/images/one.jpg"])

@@ -71,6 +71,7 @@
                                     Online
                                 {% elif profile.last_seen_at %}
                                     Last seen {{ profile.last_seen_at|time_ago }}
+                                    <time class="text-muted small" datetime="{{ profile.last_seen_at }}">&middot; {{ profile.last_seen_at|format_datetime }}</time>
                                 {% else %}
                                     Offline
                                 {% endif %}
