@@ -143,7 +143,7 @@ def update_popularity(user_id: int):
     report_count = reports["reports"] if reports else 0
 
     score = max(0, (like_count * POPULARITY_LIKE_WEIGHT) + views - (report_count * POPULARITY_REPORT_PENALTY))
-    execute("UPDATE profiles SET popularity_score = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", (score, user_id))
+    execute("UPDATE profiles SET popularity_score = ? WHERE user_id = ?", (score, user_id))
     return score
 
 
