@@ -63,4 +63,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run unit tests (${{ matrix.test-module }})
+        env:
+          SECRET_KEY: ci-test-secret
         run: python -m unittest ${{ matrix.test-module }} -v

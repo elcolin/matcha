@@ -1,0 +1,31 @@
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="age_gap">Max age gap (years)</label>
+    <input class="form-control" type="number" min="0" max="100" id="age_gap" name="age_gap" value="{{ args.get('age_gap', '') }}">
+</div>
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="max_distance">Max distance (km)</label>
+    <input class="form-control" type="number" min="0" id="max_distance" name="max_distance" value="{{ args.get('max_distance', '') }}">
+</div>
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="min_fame">Min fame rating</label>
+    <input class="form-control" type="number" min="0" id="min_fame" name="min_fame" value="{{ args.get('min_fame', '') }}">
+</div>
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="min_shared_tags">Min shared tags</label>
+    <input class="form-control" type="number" min="0" max="50" id="min_shared_tags" name="min_shared_tags" value="{{ args.get('min_shared_tags', '') }}">
+</div>
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="sort_by">Sort by</label>
+    <select class="form-select" id="sort_by" name="sort_by">
+        {% for value, label in [('smart', 'Smart match'), ('age', 'Age'), ('location', 'Distance'), ('popularity', 'Fame rating'), ('tags', 'Shared tags')] %}
+            <option value="{{ value }}" {% if args.get('sort_by', 'smart') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div class="col-6 col-md-auto">
+    <label class="form-label" for="order">Order</label>
+    <select class="form-select" id="order" name="order">
+        <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
+        <option value="desc" {% if args.get('order', 'asc') == 'desc' %}selected{% endif %}>Descending</option>
+    </select>
+</div>

@@ -17,7 +17,7 @@ from app.notifications.routes import notifications_bp
 from app.search.routes import search_bp
 
 from app.db import close_db, init_db, query_one, execute
-from app.utils import csrf_protect, get_csrf_token, time_ago
+from app.utils import csrf_protect, format_datetime, get_csrf_token, time_ago
 
 load_dotenv()
 
@@ -36,7 +36,10 @@ def _safe_referrer_path():
 def create_app():
     app = Flask(__name__)
     app.config.from_object("app.config.Config")
+    if not app.config["SECRET_KEY"]:
+        raise RuntimeError("SECRET_KEY is not set: define it in .env")
     app.add_template_filter(time_ago)
+    app.add_template_filter(format_datetime)
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
