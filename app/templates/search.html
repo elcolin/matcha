@@ -22,10 +22,11 @@
                 <label class="form-label" for="city">City</label>
                 <input class="form-control" type="text" maxlength="100" id="city" name="city" value="{{ args.get('city', '') }}">
             </div>
-            <div class="col-12 col-md-auto">
-                <label class="form-label" for="tags">Tags</label>
-                <input class="form-control" type="text" maxlength="200" id="tags" name="tags" value="{{ args.get('tags', '') }}" placeholder="music, hiking">
-            </div>
+        <div class="col-auto">
+            <label class="form-label" for="tags">Tags</label>
+            <input class="form-control" type="text" id="tags" name="tags" list="tag-suggestions" autocomplete="off" value="{{ args.get('tags', '') }}" placeholder="music, hiking">
+            {% include "components/tag_suggestions.html" %}
+        </div>
         </fieldset>
         <fieldset class="row g-2 mb-3 align-items-end">
             {% include 'components/filter_form.html' %}

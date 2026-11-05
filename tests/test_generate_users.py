@@ -65,7 +65,6 @@ class GenerateProfileTests(unittest.TestCase):
         with patch.dict(sys.modules, {"generate_bio": ai_module}):
             generate_users.generate_profile(
                 user_id=42,
-                created_at=datetime(2025, 1, 1),
                 ai=True,
             )
 
@@ -79,7 +78,6 @@ class GenerateProfileTests(unittest.TestCase):
         fallback_bio = "I enjoy quiet mornings."
         fake = MagicMock()
         fake.paragraph.return_value = fallback_bio
-        fake.date_time_between.return_value = datetime(2025, 1, 2)
         fake.local_latlng.return_value = ("48.8", "2.3", "Paris", "France", "Europe/Paris")
         fake.street_name.return_value = "Rue de Rivoli"
         ai_module = MagicMock()
@@ -91,7 +89,6 @@ class GenerateProfileTests(unittest.TestCase):
         ):
             generate_users.generate_profile(
                 user_id=42,
-                created_at=datetime(2025, 1, 1),
                 ai=True,
             )
 

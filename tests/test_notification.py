@@ -19,6 +19,7 @@ from app import create_app
 from app.config import Config
 from app.db import execute, query_all
 from app.security import hash_password
+from tests.helpers import complete_profile_for_username
 
 PASSWORD = "StrongPass123!"
 
@@ -75,6 +76,8 @@ class NotificationCreationTests(unittest.TestCase):
             return {"X-CSRFToken": sess["csrf_token"]}
 
     def login(self, username):
+        with self.app.app_context():
+            complete_profile_for_username(username)
         return self.client.post(
             "/login",
             data={"username": username, "password": PASSWORD},
@@ -149,10 +152,13 @@ class NotificationCreationTests(unittest.TestCase):
 
     def test_liking_without_profile_photo_returns_error_and_no_notification(self):
         self.login("alice")
+        with self.app.app_context():
+            execute("DELETE FROM photos WHERE user_id = ?", (self.user_a,))
 
         response = self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
-        self.assertEqual(response.status_code, 400)
+        # Blocked by the incomplete-profile gate before like_profile runs.
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(self.notifications_for(self.user_b), [])
 
     def test_mutual_like_creates_new_match_notification_for_both_users(self):
