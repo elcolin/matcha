@@ -69,7 +69,7 @@ def _sort(items, args):
         "popularity": lambda p: p.get("popularity_score", 0),
         "tags": lambda p: p["shared_tags_count"],
     }
-    descending = args.get("order", "desc") != "asc"
+    descending = args.get("order", "asc") != "asc"
     sort_by = args.get("sort_by", "smart")
     if sort_by == "location":
         known = [

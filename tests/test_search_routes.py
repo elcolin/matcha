@@ -67,8 +67,8 @@ class SortTests(unittest.TestCase):
     def test_smart_match_descending_keeps_best_matches_first(self):
         items = [{"id": 1}, {"id": 2}, {"id": 3}]
 
-        for args in (MultiDict(), MultiDict({"sort_by": "smart", "order": "desc"})):
-            self.assertEqual([i["id"] for i in _sort(list(items), args)], [1, 2, 3])
+        args = MultiDict({"sort_by": "smart", "order": "desc"})
+        self.assertEqual([i["id"] for i in _sort(list(items), args)], [1, 2, 3])
 
     def test_smart_match_ascending_reverses_ranking(self):
         items = [{"id": 1}, {"id": 2}, {"id": 3}]
@@ -76,6 +76,30 @@ class SortTests(unittest.TestCase):
         result = _sort(items, MultiDict({"sort_by": "smart", "order": "asc"}))
 
         self.assertEqual([i["id"] for i in result], [3, 2, 1])
+
+    def test_sort_defaults_to_ascending(self):
+        items = [{"id": 1, "age": 20}, {"id": 2, "age": 30}]
+
+        result = _sort(items, MultiDict({"sort_by": "age"}))
+
+        self.assertEqual([i["id"] for i in result], [1, 2])
+
+    def test_location_sort_keeps_unknown_distances_last_in_both_directions(self):
+        items = [
+            {"id": 1, "distance_km": 10},
+            {"id": 2, "distance_km": 99999},
+            {"id": 3, "distance_km": 80},
+        ]
+
+        descending = _sort(
+            list(items), MultiDict({"sort_by": "location", "order": "desc"})
+        )
+        ascending = _sort(
+            list(items), MultiDict({"sort_by": "location", "order": "asc"})
+        )
+
+        self.assertEqual([i["id"] for i in descending], [3, 1, 2])
+        self.assertEqual([i["id"] for i in ascending], [1, 3, 2])
 
 
 class SearchRouteTests(unittest.TestCase):
