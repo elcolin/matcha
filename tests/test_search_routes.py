@@ -76,12 +76,12 @@ class SortTests(unittest.TestCase):
 
         self.assertEqual([i["id"] for i in result], [3, 2, 1])
 
-    def test_sort_defaults_to_ascending(self):
+    def test_sort_defaults_to_descending(self):
         items = [{"id": 1, "age": 20}, {"id": 2, "age": 30}]
 
         result = _sort(items, MultiDict({"sort_by": "age"}))
 
-        self.assertEqual([i["id"] for i in result], [1, 2])
+        self.assertEqual([i["id"] for i in result], [2, 1])
 
     def test_location_sort_keeps_unknown_distances_last_in_both_directions(self):
         items = [

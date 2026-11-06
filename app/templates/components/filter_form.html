@@ -25,7 +25,7 @@
 <div class="col-6 col-md-auto">
     <label class="form-label" for="order">Order</label>
     <select class="form-select" id="order" name="order">
-        <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
         <option value="desc" {% if args.get('order', 'asc') == 'desc' %}selected{% endif %}>Descending</option>
+        <option value="asc" {% if args.get('order') == 'asc' %}selected{% endif %}>Ascending</option>
     </select>
 </div>
