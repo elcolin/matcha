@@ -11,14 +11,14 @@ from app.config import UserConfig
 from app import create_app
 from app.db import execute
 
-API_IMAGES1 = os.getenv("API_IMAGES1")
+API_IMAGES = os.getenv("API_IMAGES")
 PLACEHOLDER_PATH = os.getenv("PLACEHOLDER_PATH", "/static/images/")
 
 """
 Usage:
     python scripts/generate_users.py [count]                  # Generate users (default: 500)
     python scripts/generate_users.py cleanup START END        # Delete users START id - END id
-    python scripts/generate_users.py cleanall                 # Delete all seeded data
+    python scripts/generate_users.py cleanall                 # Delete all user data
     python scripts/generate_users.py 20 ai                    # Generate users with AI bios (default: random text)
 """
 
@@ -27,8 +27,6 @@ fake = Faker(["en_US", "fr_FR"])
 
 
 def random_last_seen(created_at: datetime):
-    if random.random() >= 0.9:
-        return None
     return min(created_at + timedelta(days=random.randint(0, 700)), datetime.now())
 
 
@@ -72,7 +70,7 @@ def generate_user(max_attempts: int = 10):
                     password_hash,
                     email_verified,
                     created_at.isoformat(sep=" "),
-                    last_seen_at.isoformat(sep=" ") if last_seen_at else None,
+                    last_seen_at.isoformat(sep=" "),
                 ),
             )
 
@@ -82,7 +80,6 @@ def generate_user(max_attempts: int = 10):
                 "username": username,
                 "first_name": first,
                 "last_name": last,
-                "created_at": created_at,
             }
 
         except sqlite3.IntegrityError:
@@ -95,7 +92,7 @@ def generate_user(max_attempts: int = 10):
             continue
 
 
-def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
+def generate_profile(user_id: int, ai: bool = False):
     if ai:
         try:
             from generate_bio import generate_bio
@@ -111,23 +108,21 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
     sexual_preference = random.choice(UserConfig.SEXUAL_PREFERENCES)
     age = random.randint(18, 70)
     popularity_score = random.randint(0, 5)
-    updated_at = fake.date_time_between(start_date=created_at, end_date="now").isoformat(sep=" ")
     location_consent_gps = 1 if random.random() < 0.7 else 0
     latitude_raw, longitude_raw, city, _country, _timezone = fake.local_latlng(country_code="FR")
     latitude = float(latitude_raw)
     longitude = float(longitude_raw)
-    jitter_lat = latitude + random.uniform(-0.03, 0.03)
-    jitter_lng = longitude + random.uniform(-0.03, 0.03)
     neighborhood = fake.street_name()
-    latitude = jitter_lat if location_consent_gps else None
-    longitude = jitter_lng if location_consent_gps else None
+    if location_consent_gps:
+        latitude += random.uniform(-0.03, 0.03)
+        longitude += random.uniform(-0.03, 0.03)
 
     execute(
         """INSERT INTO profiles
            (user_id, gender, sexual_preference, bio, city, neighborhood,
             latitude, longitude, location_consent_gps, popularity_score,
-            age, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            age)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             gender,
@@ -140,7 +135,6 @@ def generate_profile(user_id: int, created_at: datetime, ai: bool = False):
             location_consent_gps,
             popularity_score,
             age,
-            updated_at,
         ),
     )
 
@@ -208,7 +202,7 @@ def create_user_tags(users, tag_map):
 
 def create_profiles(users, ai: bool = False):
     for user in users:
-        generate_profile(user["id"], user["created_at"], ai=ai)
+        generate_profile(user["id"], ai=ai)
 
 
 def get_placeholder(count: int):
@@ -241,10 +235,10 @@ def generate_photos(count):
         return []
 
     photos = []
-    if API_IMAGES1:
+    if API_IMAGES:
         try:
             response = requests.get(
-                API_IMAGES1,
+                API_IMAGES,
                 params={
                     "taxon_id": 3,
                     "has[]": "photos",
@@ -335,7 +329,7 @@ def clean_all():
     execute("DELETE FROM tags")
     for name in ("users", "photos", "tags"):
         reset_sequence(name)
-    print("Deleted all seeded data")
+    print("Deleted all user data")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,15 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env here (not only in create_app): this module is imported, and its class
+# attributes evaluated, before app/__init__.py gets to call load_dotenv().
+load_dotenv()
+
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+    SECRET_KEY = os.getenv("SECRET_KEY")
     BASE_DIR = Path(__file__).resolve().parent.parent
     DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "instance" / "matcha.db"))
 
@@ -25,6 +31,19 @@ class Config:
 class UserConfig(Config):
     GENDERS = ["female", "male", "non-binary", "other"]
     SEXUAL_PREFERENCES = ["everyone", "men", "women"]
+
+    # Server-side limits, mirrored by the form attributes (min/max/maxlength/
+    # pattern) in the templates: the client checks are only a convenience.
+    AGE_MIN = 18
+    AGE_MAX = 120
+    NAME_MAX_LENGTH = 50
+    USERNAME_PATTERN = r"[A-Za-z0-9_.-]{3,30}"
+    BIO_MAX_LENGTH = 1000
+    PLACE_MAX_LENGTH = 100
+    TAG_MAX_LENGTH = 30
+    TAGS_MAX_COUNT = 10
+    MESSAGE_MAX_LENGTH = 1000
+    PASSWORD_MAX_LENGTH = 128
     TAGS = {
         "early-bird": 1,
         "night-owl": 2,

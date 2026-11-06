@@ -183,5 +183,26 @@ class ConfirmEmailChangeTests(unittest.TestCase):
         self.assertIsNotNone(change_row["used_at"])
 
 
+    def test_case_variant_taken_by_another_account_is_handled_cleanly(self):
+        from app.db import execute, query_one
+        from app.security import hash_password
+
+        token = self._insert_pending_change("new@example.com")
+
+        with self.app.app_context():
+            execute(
+                "INSERT INTO users (email, username, last_name, first_name, password_hash, email_verified) "
+                "VALUES (?, ?, 'Doe', 'Bob', ?, 1)",
+                ("NEW@example.com", "bob", hash_password("StrongPass123!")),
+            )
+
+        response = self.client.get(f"/email-change/confirm/{token}")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._user_row()["email"], "old@example.com")
+        with self.app.app_context():
+            change_row = query_one("SELECT used_at FROM email_changes WHERE token = ?", (token,))
+        self.assertIsNotNone(change_row["used_at"])
+
 if __name__ == "__main__":
     unittest.main()

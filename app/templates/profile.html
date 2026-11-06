@@ -6,14 +6,55 @@
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card profile-card shadow">
-                    <!-- IMAGE -->
-                    <img src="{{ profile.image }}"
-                         class="profile-img"
-                         alt="{{ profile.name }} profile picture">
+                    <!-- PHOTOS -->
+                    {% set photos = profile.photos or [] %}
+                    {% if photos %}
+                        <div id="profileCarousel" class="carousel slide" data-bs-ride="false">
+                            <div class="carousel-inner">
+                                {% for photo in photos %}
+                                    <div class="carousel-item {% if loop.first %}active{% endif %}">
+                                        <img src="{{ photo.url }}"
+                                             class="d-block w-100 profile-img"
+                                             alt="{{ profile.name }} photo {{ loop.index }}">
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            {% if photos | length > 1 %}
+                                <button class="carousel-control-prev" type="button"
+                                        data-bs-target="#profileCarousel" data-bs-slide="prev"
+                                        aria-label="Previous photo">
+                                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                </button>
+                                <button class="carousel-control-next" type="button"
+                                        data-bs-target="#profileCarousel" data-bs-slide="next"
+                                        aria-label="Next photo">
+                                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                </button>
+                            {% endif %}
+                        </div>
+                        {% if photos | length > 1 %}
+                            <div class="d-flex flex-wrap gap-2 p-2" aria-label="Profile photos">
+                                {% for photo in photos %}
+                                    <button type="button" class="btn p-0 border-0"
+                                            data-bs-target="#profileCarousel"
+                                            data-bs-slide-to="{{ loop.index0 }}"
+                                            aria-label="Show photo {{ loop.index }}">
+                                        <img src="{{ photo.url }}" class="rounded"
+                                             style="width:64px; height:64px; object-fit:cover;"
+                                             alt="">
+                                    </button>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <img src="{{ profile.image }}"
+                             class="profile-img"
+                             alt="{{ profile.name }} profile picture">
+                    {% endif %}
                     <!-- BODY -->
                     <div class="card-body p-4">
-                        <!-- NAME + AGE -->
-                        <h2 class="fw-bold mb-0">{{ profile.name }}{% if profile.age %}, {{ profile.age }}{% endif %} 🐦</h2>
+                        <!-- NAME -->
+                        <h2 class="fw-bold mb-3">{{ profile.name }} 🐦</h2>
                         {% if not profile.is_self %}
                             {% if profile.connected %}
                                 <span class="badge bg-danger my-2">💖 Matched</span>
@@ -30,18 +71,26 @@
                                     Online
                                 {% elif profile.last_seen_at %}
                                     Last seen {{ profile.last_seen_at|time_ago }}
+                                    <time class="text-muted small" datetime="{{ profile.last_seen_at }}">&middot; {{ profile.last_seen_at|format_datetime }}</time>
                                 {% else %}
                                     Offline
                                 {% endif %}
                             </p>
-                            {% if profile.city %}
-                                <p class="text-muted mb-0">📍 {{ profile.city }}</p>
-                            {% endif %}
                         </div>
-                        {% if profile.gender %}
-                            <p class="text-muted small">Gender: {{ profile.gender | capitalize }}</p>
-                        {% endif %}
-                        <p class="text-muted small popularity-score">Popularity: {{ profile.popularity_score }}</p>
+                        <div class="d-flex flex-column align-items-start gap-1 mb-3">
+                            {% if profile.age %}
+                                <p class="text-muted small mb-0">Age: {{ profile.age }}</p>
+                            {% endif %}
+                            {% if profile.city or profile.neighborhood %}
+                                <p class="text-muted small mb-0">
+                                    Location: {{ [profile.city, profile.neighborhood] | select | join(', ') }}
+                                </p>
+                            {% endif %}
+                            {% if profile.gender %}
+                                <p class="text-muted small mb-0">Gender: {{ profile.gender | capitalize }}</p>
+                            {% endif %}
+                            <p class="text-muted small popularity-score mb-0">Popularity: {{ profile.popularity_score }}</p>
+                        </div>
                         <!-- BIO -->
                         <p>{{ profile.bio }}</p>
                         <!-- TAGS -->

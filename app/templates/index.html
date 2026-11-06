@@ -46,9 +46,25 @@
         <section class="bg-light py-5">
             <div class="container">
                 <h2 class="text-center mb-4">Profiles you might like</h2>
+                <form method="get" action="{{ url_for('main.home') }}" class="row g-2 mb-4 align-items-end">
+                    {% include 'components/filter_form.html' %}
+                    <div class="col-12 col-md-auto d-flex gap-2">
+                        <button type="submit" class="btn btn-danger">Apply</button>
+                        <a href="{{ url_for('main.home') }}" class="btn btn-outline-secondary">Reset</a>
+                    </div>
+                </form>
                 <div class="row g-4">
                     {% for profile in profiles %}
                         {% include 'components/profile_card.html' %}
+                    {% else %}
+                        {% if args.get('age_gap') or args.get('max_distance') or args.get('min_fame') or args.get('min_shared_tags') %}
+                            <p class="col-12 text-muted text-center">
+                                No profiles match your filters.
+                                <a href="{{ url_for('main.home') }}">Clear filters</a>
+                            </p>
+                        {% else %}
+                            <p class="col-12 text-muted text-center">No suggestions for now.</p>
+                        {% endif %}
                     {% endfor %}
                 </div>
             </div>

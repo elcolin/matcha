@@ -3,11 +3,12 @@
 ## Objectif
 Ce dossier contient les tests unitaires de l'application. La suite actuelle couvre :
 
-- `app/security.py` — hash/vérification de mot de passe, force du mot de passe, tokens signés.
+- `app/security.py` (`test_security.py`, `test_csrf.py`) — hash/vérification de mot de passe, force du mot de passe, tokens signés (email, reset, CSRF) et leur intégration (`csrf_protect`) sur les formulaires HTML/JSON.
 - `app/utils.py` — popularité, blocage, match, `login_required`, notifications.
 - `app/auth/routes.py` — verrouillage anti-bruteforce (`_is_locked_out`).
 - `app/auth/routes.py::request_password_reset` (`test_auth_reset.py`) — non-fuite d'existence de compte : le flux token/email s'exécute toujours pour un compte existant, et la réponse HTTP est indiscernable entre un compte existant et un compte inconnu.
 - Non-fuite d'existence de compte lors d'une panne d'envoi d'email (`test_auth_email_errors.py`, régression issue #61 sur `app/auth/routes.py::request_password_reset` et `send_verification_email`) — un échec `send_email` ne doit jamais se traduire par un statut HTTP différent entre un compte existant et un compte inconnu.
+- `app/match/routes.py` (`test_match.py`, `test_match_routes.py`) — distance, compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
 - `app/match/routes.py` — distance (haversine en km, sentinelle `99999` si une coordonnée manque), compatibilité de genre, filtres/tri des suggestions, tags partagés, `candidate_profiles`.
 - `app/profile/data.py` — mise à jour email/prénom/nom (`UserUpdater`).
 - `app/profile/geolocation.py` — configuration du géocodeur (timeout, user-agent), extraction ville/quartier depuis les coordonnées GPS (repli city → town → village → municipality → hamlet → city_district), géocodage de ville `geocode_city` en `(lat, lon)` ; toute erreur geopy/réseau devient une `APIError` 503 (géocodeur mocké, aucun appel réseau).
@@ -22,11 +23,15 @@ Ce dossier contient les tests unitaires de l'application. La suite actuelle couv
 - Confidentialité de la fiche profil (`test_profile_payload.py`, issue #82) — `GET /profile/<id>` exige une connexion (401 sinon) ; `_profile_payload` n'expose latitude/longitude que sur demande explicite (`include_coordinates`), y compris via `candidate_profiles` où seule la distance est conservée.
 - `app/notifications/routes.py` (`test_notification.py`) — création des notifications (vue de profil, like reçu, match, unlike) via `app/utils.add_notification`, compteur non-lu, marquage lu, rendu de la page, protection `login_required`.
 - Notifications liées au blocage (`test_notifications.py`, via des requêtes client sur `app/profile/routes.py`) — aucune notification de vue/unlike entre utilisateurs bloqués.
-- Présence et notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — fraîcheur de `_is_viewing_chat`, upsert de la route de ping de présence, notification `message_received` envoyée seulement si le destinataire ne regarde pas activement la conversation.
+- Notification de message en chat (`test_chat.py`, via `app/chat/routes.py`) — notification `message_received` envoyée à chaque message, destinataire hors ligne inclus, message retrouvé dans l'historique à sa prochaine visite.
 - `app/auth/routes.py::register` (`test_registration.py`) — un utilisateur connecté est redirigé vers l'accueil en GET et en POST, sans création de compte ni envoi d'email ; un visiteur anonyme ou une session obsolète accède toujours au formulaire.
 - `test_flash_xss.py` — échappement HTML des messages flash (régression XSS sur `app/templates/components/base.html`).
+<<<<<<< HEAD
+- Fonctions pures du seed de conversations via Ollama (`test_generate_chat.py`, `scripts/generate_chat.py`) et du répondeur de chat bot dev-only (`test_chat_bot_responder.py`, `scripts/chat_bot_responder.py`) — y compris, via mocks (`unittest.mock.patch`) de `query_all`/`call_ollama`, la construction du prompt de réponse (`build_reply_prompt`) et le garde-fou contre les générations où le modèle répond avec le préfixe de l'autre interlocuteur.
+=======
 - `test_email_html_escape.py` — échappement HTML du prénom dans l'email de vérification (régression XSS sur `app/auth/routes.py::send_verification_email`).
 - `test_url_map.py` — URLs publiques des blueprints `profile`, `notifications` et `users` (préfixes `url_prefix`, règles de la `url_map`, racines `/users/`, `/profile/`, `/notifications/` non routées).
+>>>>>>> main
 
 `tests/helpers.py` fournit `DBTestCase`, une base commune qui pousse un contexte Flask adossé à une base SQLite temporaire (chargée depuis le vrai `app/schema.sql`), sans jamais toucher `instance/matcha.db`.
 
@@ -50,3 +55,23 @@ Les tests sont lancés automatiquement sur chaque `push` et `pull_request` via :
 - Garder des tests déterministes (pas de dépendance réseau, pas d'état externe).
 - Mettre à jour ce README et le workflow si la commande de test change.
 - Vérifier localement la suite avant de pousser.
+
+## Mocker les accès DB/réseau (`unittest.mock.patch`)
+Pour tester une fonction qui appelle `app.db.query_all`/`query_one`/`execute` ou un service
+externe (ex. `scripts.generate_chat.call_ollama`) sans base de données ni réseau réels,
+patcher le nom **tel qu'importé dans le module testé**, pas à sa source. Exemple
+(`tests/test_chat_bot_responder.py`, `GenerateBotReplyPromptRegressionTests`) :
+
+```python
+from unittest.mock import patch
+
+@patch("scripts.chat_bot_responder.call_ollama")
+@patch("scripts.chat_bot_responder.query_all")
+def test_something(self, mock_query_all, mock_call_ollama):
+    mock_query_all.return_value = [{"sender_id": 2, "content": "..."}]
+    mock_call_ollama.return_value = "B: ..."
+    ...
+```
+
+Les décorateurs `@patch` s'appliquent de bas en haut, donc les mocks arrivent en
+paramètres dans le même ordre (le plus proche de la fonction en premier).

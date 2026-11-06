@@ -5,6 +5,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from app import config as app_config
+from tests.helpers import complete_profile
 
 
 def _future_iso(seconds=30):
@@ -58,6 +59,7 @@ class OnlineStatusIntegrationTests(unittest.TestCase):
                 "INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)",
                 (user_id, token),
             )
+            complete_profile(user_id)
         with self.client.session_transaction() as sess:
             sess["user_id"] = user_id
             sess["session_token"] = token

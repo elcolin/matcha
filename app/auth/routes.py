@@ -2,7 +2,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-from email_validator import EmailNotValidError, validate_email
+from email_validator import EmailNotValidError
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from markupsafe import escape
 
@@ -17,7 +17,9 @@ from app.security import (
     validate_password_strength,
     verify_password,
 )
-from app.utils import APIError, login_required
+from app.config import UserConfig
+from app.utils import APIError, login_required, normalize_email
+from app.validation import clean_text, validate_username
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -76,6 +78,24 @@ def send_verification_email(user_id: int, email: str, first_name: str = "User"):
     return token
 
 
+def _send_existing_account_email(email: str):
+    reset_link = url_for("auth.request_password_reset", _external=True)
+    try:
+        send_email(
+            email,
+            "Sign-up attempt on your Matcha account",
+            f"""
+            <p>Someone tried to create a Matcha account with this email address,
+            but you already have one.</p>
+            <p>If it was you, log in with your username or
+            <a href="{reset_link}">reset your password</a>.</p>
+            <p>If it was not you, you can ignore this email.</p>
+            """,
+        )
+    except Exception:
+        current_app.logger.exception("Failed to send existing-account notice")
+
+
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if g.current_user:
@@ -92,7 +112,14 @@ def register():
         return render_template("register.html", error=f"Missing fields: {', '.join(missing)}")
 
     try:
-        email = validate_email(data["email"].strip(), check_deliverability=False).normalized
+        username = validate_username(data.get("username"))
+        first_name = clean_text(data.get("first_name"), "First name", UserConfig.NAME_MAX_LENGTH, required=True)
+        last_name = clean_text(data.get("last_name"), "Last name", UserConfig.NAME_MAX_LENGTH, required=True)
+    except APIError as err:
+        return render_template("register.html", error=err.message)
+
+    try:
+        email = normalize_email(str(data["email"]))
     except EmailNotValidError:
         return render_template("register.html", error="Invalid email address")
 
@@ -104,20 +131,28 @@ def register():
     if not is_ok:
         return render_template("register.html", error=reason)
 
+    # Usernames are public (shown on profiles), so reporting a taken one leaks nothing.
+    if query_one("SELECT 1 FROM users WHERE username = ?", (username,)):
+        return render_template("register.html", error="Username is already taken")
+
     try:
         cur = execute(
             "INSERT INTO users (email, username, last_name, first_name, password_hash) VALUES (?, ?, ?, ?, ?)",
-            (email, data["username"].strip(),
-             data["last_name"].strip(), data["first_name"].strip(),
+            (email, username,
+             last_name, first_name,
              hash_password(password)),
         )
-    except Exception:
-        return render_template("register.html", error="Email or username already exists")
+    except sqlite3.IntegrityError:
+        cur = None
 
-    user_id = cur.lastrowid
-    _ensure_profile_exists(user_id)
-
-    send_verification_email(user_id, email, data["first_name"].strip())
+    if cur is not None:
+        user_id = cur.lastrowid
+        _ensure_profile_exists(user_id)
+        send_verification_email(user_id, email, first_name)
+    else:
+        # Email already registered: answer exactly like a successful sign-up so the
+        # form cannot be used to enumerate accounts, and warn the real owner instead.
+        _send_existing_account_email(email)
 
     return render_template(
         "register.html",
@@ -160,7 +195,7 @@ def resend_verification_email():
         return render_template("resend_verification.html", error="Email is required")
 
     try:
-        email = validate_email(raw_email, check_deliverability=False).normalized
+        email = normalize_email(raw_email)
     except EmailNotValidError:
         return render_template("resend_verification.html", error="Invalid email address")
 
@@ -208,13 +243,12 @@ def login():
     session["user_id"] = user["id"]
     session_token = secrets.token_urlsafe(32)
     session["session_token"] = session_token
-    session["logout_token"] = secrets.token_urlsafe(16)
     execute("INSERT INTO user_sessions (user_id, session_token) VALUES (?, ?)", (user["id"], session_token))
 
     return redirect("/")
 
 
-@auth_bp.route("/logout", methods=["GET", "POST"])
+@auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
     user_id = g.current_user["id"]
@@ -224,9 +258,9 @@ def logout():
 
     session.clear()
 
-    if request.method == "GET":
-        return redirect(url_for("main.home"))
-    return jsonify({"message": "Logged out"})
+    if request.is_json:
+        return jsonify({"message": "Logged out"})
+    return redirect(url_for("main.home"))
 
 
 @auth_bp.route("/password-reset/request", methods=["GET", "POST"])
@@ -294,7 +328,7 @@ def confirm_password_reset(token):
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                       <label class="form-label">New Password</label>
-                      <input name="password" class="form-control" type="password" required />
+                      <input name="password" class="form-control" type="password" minlength="10" maxlength="128" required />
                     </div>
                     <button type="submit" class="btn btn-danger w-100 mb-3">Reset password</button>
                   </form>

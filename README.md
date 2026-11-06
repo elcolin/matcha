@@ -34,10 +34,12 @@ Créer un fichier `.env` à la racine (jamais commité) avec au minimum :
 SECRET_KEY=...              # clé de signature des sessions/tokens/CSRF
 DATABASE_PATH=...           # optionnel, défaut instance/matcha.db
 SESSION_COOKIE_SECURE=false # true en production (HTTPS)
-SMTP_SERVER=...
+SMTP_SERVER=...             # credentials to send verification emails
 SMTP_PORT=...
 SMTP_USERNAME=...
 SMTP_PASSWORD=...
+PI_IMAGES=...               # to generate profile photos
+PLACEHOLDER_PATH=...        # placeholder if images API doesn't work
 ```
 
 ## Lancer le serveur de développement
@@ -55,6 +57,19 @@ python -m unittest discover -s tests -p "test_*.py"
 ```
 
 Les tests tournent aussi en CI GitHub Actions sur chaque push/PR (`.github/workflows/unit-tests.yml`).
+
+## Outils de développement (`scripts/`)
+
+CLI dev-only, lancés manuellement, jamais démarrés par l'application Flask :
+
+- `python scripts/generate_users.py [count]` — génère des profils factices avec `Faker` (au moins 500 pour l'évaluation, selon les contraintes du sujet). Les photos sont téléchargées depuis l'API iNaturalist (`api.inaturalist.org`) ; en cas d'échec, des photos de remplacement sont utilisées.
+- `python scripts/generate_users.py [count] ai` — génère des profils dont la biographie est écrite par le modèle, `SmolLM2-360M-Instruct` par défaut.
+- `python scripts/generate_users.py cleanup START END` — supprime les données des utilisateurs dont les identifiants sont compris entre `START` et `END`. `python scripts/generate_users.py cleanall` supprime les données de tous les utilisateurs.
+- `scripts/generate_chat.py [count]` — seed des conversations réalistes entre utilisateurs matchés, via un modèle Ollama local (nécessite `ollama serve` avec un modèle instruct léger, ex. `qwen2.5:3b-instruct`).
+- `scripts/create_bot_user.py <user_id> [suffix]` — crée un compte "bot" (`username` préfixé `bot_`) et le matche (like mutuel) avec un utilisateur cible.
+- `scripts/chat_bot_responder.py [username]` — fait répondre en temps réel un utilisateur "bot" aux messages de ses partenaires matchés non bloqués, en réutilisant les mêmes helpers Ollama que `generate_chat.py` ; nécessite aussi `ollama serve`.
+
+Chaque script expose ses propres sous-commandes `cleanup`/`cleanall` pour supprimer les données générées ; voir l'en-tête de chaque fichier pour le détail.
 
 ## Déploiement
 

@@ -1,9 +1,10 @@
 import secrets
 from datetime import datetime, timezone
 from functools import wraps
+from email_validator import validate_email
 from flask import current_app, g, request, session
 
-from app.db import execute, query_one
+from app.db import execute, query_all, query_one
 from app.security import csrf_token_signature_valid, generate_csrf_token
 
 POPULARITY_LIKE_WEIGHT = 10
@@ -19,6 +20,21 @@ class APIError(Exception):
         super().__init__(message)
 
 
+class CSRFError(APIError):
+    """Rejected CSRF check: always answered with its status code, never redirected."""
+
+
+def normalize_email(raw: str) -> str:
+    """Return the canonical form of an email address: validated, then fully
+    lowercased (email_validator only lowercases the domain). Every write and
+    lookup on users.email / email_changes.new_email goes through it so case
+    variants map to the same account (issue #98).
+
+    Raises email_validator.EmailNotValidError on an invalid address.
+    """
+    return validate_email(raw.strip(), check_deliverability=False).normalized.lower()
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -27,6 +43,36 @@ def login_required(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def missing_profile_fields(user_id: int) -> list[str]:
+    """Labels of the profile fields a user must still fill before using the site.
+
+    The subject's profile (gender, sexual preference, bio, interest tags, a
+    profile picture) plus the age and location that matching relies on.
+    """
+    row = query_one(
+        """
+        SELECT p.gender, p.sexual_preference, p.bio, p.age, p.city,
+               EXISTS (SELECT 1 FROM user_tags ut WHERE ut.user_id = p.user_id) AS has_tags,
+               EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id AND ph.is_profile_photo = 1)
+                   AS has_profile_photo
+        FROM profiles p
+        WHERE p.user_id = ?
+        """,
+        (user_id,),
+    )
+    row = dict(row) if row else {}
+    checks = (
+        ("gender", row.get("gender")),
+        ("sexual preference", row.get("sexual_preference")),
+        ("bio", (row.get("bio") or "").strip()),
+        ("interests", row.get("has_tags")),
+        ("profile picture", row.get("has_profile_photo")),
+        ("age", row.get("age")),
+        ("location", (row.get("city") or "").strip()),
+    )
+    return [label for label, value in checks if not value]
 
 
 def get_csrf_token():
@@ -80,7 +126,7 @@ def csrf_protect():
         and csrf_token_signature_valid(current_app.config["SECRET_KEY"], session_token)
     )
     if not valid:
-        raise APIError("Invalid or missing CSRF token", 403)
+        raise CSRFError("Invalid or missing CSRF token", 403)
 
 
 def update_popularity(user_id: int):
@@ -97,7 +143,7 @@ def update_popularity(user_id: int):
     report_count = reports["reports"] if reports else 0
 
     score = max(0, (like_count * POPULARITY_LIKE_WEIGHT) + views - (report_count * POPULARITY_REPORT_PENALTY))
-    execute("UPDATE profiles SET popularity_score = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", (score, user_id))
+    execute("UPDATE profiles SET popularity_score = ? WHERE user_id = ?", (score, user_id))
     return score
 
 
@@ -135,6 +181,24 @@ _TIME_AGO_UNITS = (
 )
 
 
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def format_datetime(iso_value):
+    """Format an ISO timestamp as 'Nov 4, 2026 at 14:32 UTC'; None when missing or invalid."""
+    if not iso_value:
+        return None
+    try:
+        moment = datetime.fromisoformat(iso_value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    moment = moment.astimezone(timezone.utc)
+    return f"{_MONTH_ABBR[moment.month - 1]} {moment.day}, {moment.year} at {moment:%H:%M} UTC"
+
+
 def time_ago(iso_value, now=None):
     """Format an ISO timestamp as '2 hours ago'; None when missing or invalid."""
     if not iso_value:
@@ -151,3 +215,20 @@ def time_ago(iso_value, now=None):
         if count >= 1:
             return f"{count} {unit}{'s' if count > 1 else ''} ago"
     return "just now"
+
+
+def popular_tags(limit: int = 20) -> list[str]:
+    """Most used tag names (ties broken alphabetically), offered as
+    <datalist> suggestions on the profile edit and search tag fields."""
+    rows = query_all(
+        """
+        SELECT t.name
+        FROM tags t
+        JOIN user_tags ut ON ut.tag_id = t.id
+        GROUP BY t.id
+        ORDER BY COUNT(*) DESC, t.name ASC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [r["name"] for r in rows]

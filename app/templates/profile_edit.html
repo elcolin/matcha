@@ -14,11 +14,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="first_name">First name</label>
-                                <input class="form-control" type="text" id="first_name" name="first_name" value="{{ profile.first_name }}" required>
+                                <input class="form-control" type="text" id="first_name" name="first_name" value="{{ profile.first_name }}" maxlength="50" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="last_name">Last name</label>
-                                <input class="form-control" type="text" id="last_name" name="last_name" value="{{ profile.last_name }}" required>
+                                <input class="form-control" type="text" id="last_name" name="last_name" value="{{ profile.last_name }}" maxlength="50" required>
                             </div>
                         </div>
 
@@ -55,20 +55,15 @@
 
                         <div class="mb-3">
                             <label class="form-label" for="tags">Interests (comma separated)</label>
-                            <input class="form-control" type="text" id="tags" name="tags"
-                                   value="{{ profile.tags | join(', ') }}" placeholder="music, hiking, coffee">
+                            <input class="form-control" type="text" id="tags" name="tags" list="tag-suggestions"
+                                   autocomplete="off" value="{{ profile.tags | join(', ') }}" placeholder="music, hiking, coffee">
+                            {% include "components/tag_suggestions.html" %}
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label" for="email">Email</label>
                             <input class="form-control" type="text" id="email" name="email"
                                    value="{{ profile.email or '' }}" placeholder="you@example.com">
-                            {% if pending_email_change %}
-                            <div class="form-text">
-                                A change to {{ pending_email_change.new_email }} is awaiting
-                                confirmation (check that inbox).
-                            </div>
-                            {% endif %}
                         </div>
 
                         <hr>
@@ -91,11 +86,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="city">City</label>
-                                <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}">
+                                <input class="form-control" type="text" id="city" name="city" value="{{ profile.city or '' }}" maxlength="100">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="neighborhood">Neighborhood (optional)</label>
-                                <input class="form-control" type="text" id="neighborhood" name="neighborhood" value="{{ profile.neighborhood or '' }}">
+                                <input class="form-control" type="text" id="neighborhood" name="neighborhood" value="{{ profile.neighborhood or '' }}" maxlength="100">
                             </div>
                         </div>
 

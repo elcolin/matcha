@@ -19,6 +19,7 @@ from app import create_app
 from app.config import Config
 from app.db import execute, query_all
 from app.security import hash_password
+from tests.helpers import complete_profile_for_username
 
 PASSWORD = "StrongPass123!"
 
@@ -75,6 +76,8 @@ class NotificationCreationTests(unittest.TestCase):
             return {"X-CSRFToken": sess["csrf_token"]}
 
     def login(self, username):
+        with self.app.app_context():
+            complete_profile_for_username(username)
         return self.client.post(
             "/login",
             data={"username": username, "password": PASSWORD},
@@ -149,10 +152,13 @@ class NotificationCreationTests(unittest.TestCase):
 
     def test_liking_without_profile_photo_returns_error_and_no_notification(self):
         self.login("alice")
+        with self.app.app_context():
+            execute("DELETE FROM photos WHERE user_id = ?", (self.user_a,))
 
         response = self.client.post(f"/profile/{self.user_b}/like", json={}, headers=self.csrf_headers())
 
-        self.assertEqual(response.status_code, 400)
+        # Blocked by the incomplete-profile gate before like_profile runs.
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(self.notifications_for(self.user_b), [])
 
     def test_mutual_like_creates_new_match_notification_for_both_users(self):
@@ -244,7 +250,69 @@ class NotificationCreationTests(unittest.TestCase):
         response = self.client.get("/notifications/view")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Profile view", response.data)
+        self.assertIn(b"viewed your profile", response.data)
+
+    # -- notification details (actor + time) ----------------------------
+
+    def test_notifications_view_shows_who_and_when(self):
+        self.login("alice")
+        self.client.get(f"/profile/{self.user_b}?format=json")
+
+        self.login("bob")
+        response = self.client.get("/notifications/view")
+        body = response.get_data(as_text=True)
+
+        self.assertIn("@alice", body)
+        self.assertIn(f'href="/profile/{self.user_a}"', body)
+        self.assertIn("just now", body)
+        created_at = self.notifications_for(self.user_b)[0]["created_at"]
+        self.assertIn(f'datetime="{created_at}"', body)
+        self.assertIn(created_at[:16], body)
+
+    def test_notifications_for_resolves_actor_for_every_payload_key(self):
+        from app.notifications.routes import _notifications_for
+        from app.security import build_notification_payload
+        from app.utils import add_notification
+
+        with self.app.app_context():
+            add_notification(self.user_b, "profile_view", build_notification_payload(viewer_id=self.user_a))
+            add_notification(self.user_b, "like_received", build_notification_payload(from_user_id=self.user_a))
+            add_notification(self.user_b, "new_match", build_notification_payload(user_id=self.user_a))
+            items = _notifications_for(self.user_b)
+
+        self.assertEqual(len(items), 3)
+        for item in items:
+            self.assertEqual(item["actor"]["id"], self.user_a)
+            self.assertEqual(item["actor"]["username"], "alice")
+            self.assertEqual(item["actor"]["first_name"], "User")
+
+    def test_notifications_for_tolerates_missing_or_deleted_actor(self):
+        from app.notifications.routes import _notifications_for
+        from app.utils import add_notification
+
+        with self.app.app_context():
+            add_notification(self.user_b, "profile_view", None)
+            add_notification(self.user_b, "like_received", "not json")
+            add_notification(self.user_b, "unliked", json.dumps({"from_user_id": 99999}))
+            items = _notifications_for(self.user_b)
+
+        self.assertEqual([item["actor"] for item in items], [None, None, None])
+
+        self.login("bob")
+        response = self.client.get("/notifications/view")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Someone", response.data)
+
+    def test_notifications_view_escapes_actor_names(self):
+        with self.app.app_context():
+            execute("UPDATE users SET first_name = ? WHERE id = ?", ("<script>x</script>", self.user_a))
+        self.login("alice")
+        self.client.get(f"/profile/{self.user_b}?format=json")
+
+        self.login("bob")
+        body = self.client.get("/notifications/view").get_data(as_text=True)
+        self.assertNotIn("<script>x</script>", body)
+        self.assertIn("&lt;script&gt;x&lt;/script&gt;", body)
 
     def test_notifications_routes_require_login(self):
         for path in ("/notifications/unread-count", "/notifications/view"):

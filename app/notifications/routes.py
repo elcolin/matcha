@@ -49,8 +49,36 @@ def _notifications_for(user_id, unread_only=False):
                 item["payload"] = json.loads(item["payload"])
             except Exception:
                 pass
+        item["actor"] = None
         payload.append(item)
+
+    actor_ids = {_actor_id(item["payload"]) for item in payload} - {None}
+    if actor_ids:
+        placeholders = ",".join("?" * len(actor_ids))
+        actors = {
+            row["id"]: dict(row)
+            for row in query_all(
+                f"SELECT id, username, first_name FROM users WHERE id IN ({placeholders})",
+                tuple(actor_ids),
+            )
+        }
+        for item in payload:
+            item["actor"] = actors.get(_actor_id(item["payload"]))
     return payload
+
+
+# Payload key holding the user who triggered the notification, depending on its type.
+_ACTOR_KEYS = ("from_user_id", "viewer_id", "user_id")
+
+
+def _actor_id(payload):
+    if not isinstance(payload, dict):
+        return None
+    for key in _ACTOR_KEYS:
+        value = payload.get(key)
+        if isinstance(value, int):
+            return value
+    return None
 
 
 @notifications_bp.route("/view", methods=["GET"])

@@ -1,19 +1,40 @@
+import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from email_validator import EmailNotValidError
 from flask import g
 
 from app.db import execute, query_one
 from app.utils import (
     APIError,
     add_notification,
+    format_datetime,
     is_blocked_between,
     is_match,
     login_required,
+    normalize_email,
     time_ago,
     update_popularity,
 )
 from tests.helpers import DBTestCase
+
+
+
+class NormalizeEmailTests(unittest.TestCase):
+    def test_lowercases_local_part_and_domain(self):
+        self.assertEqual(normalize_email("Taken@Example.COM"), "taken@example.com")
+
+    def test_invalid_address_raises(self):
+        with self.assertRaises(EmailNotValidError):
+            normalize_email("not-an-email")
+
+
+class EmailUniquenessSchemaTests(DBTestCase):
+    def test_case_variant_of_existing_email_violates_unique_constraint(self):
+        self.create_user(email="a@x.com", username="first")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.create_user(email="A@x.com", username="second")
 
 
 class UpdatePopularityTests(DBTestCase):
@@ -167,6 +188,31 @@ class TimeAgoTests(unittest.TestCase):
     def test_naive_timestamp_is_treated_as_utc(self):
         naive = (self.NOW - timedelta(hours=3)).replace(tzinfo=None).isoformat()
         self.assertEqual(time_ago(naive, now=self.NOW), "3 hours ago")
+
+
+class FormatDatetimeTests(unittest.TestCase):
+    def test_missing_or_invalid_value_returns_none(self):
+        self.assertIsNone(format_datetime(None))
+        self.assertIsNone(format_datetime(""))
+        self.assertIsNone(format_datetime("not a date"))
+
+    def test_formats_aware_timestamp_in_utc(self):
+        self.assertEqual(
+            format_datetime("2026-11-04T14:32:57.123456+00:00"),
+            "Nov 4, 2026 at 14:32 UTC",
+        )
+
+    def test_converts_other_timezones_to_utc(self):
+        self.assertEqual(
+            format_datetime("2026-11-04T09:05:00+02:00"),
+            "Nov 4, 2026 at 07:05 UTC",
+        )
+
+    def test_naive_timestamp_is_treated_as_utc(self):
+        self.assertEqual(
+            format_datetime("2026-01-09 08:03:00"),
+            "Jan 9, 2026 at 08:03 UTC",
+        )
 
 
 if __name__ == "__main__":

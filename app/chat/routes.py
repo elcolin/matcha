@@ -3,27 +3,15 @@ import time
 
 from flask import Blueprint, Response, g, jsonify, render_template, request, stream_with_context
 
-from app.db import execute, query_all, query_one
+from app.db import execute, query_all
 from app.profile.routes import _compute_online
 from app.security import build_notification_payload
+from app.config import UserConfig
 from app.utils import APIError, add_notification, is_blocked_between, is_match, login_required
+from app.validation import clean_text
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
 POLL_INTERVAL_SECONDS = 1
-PRESENCE_STALE_SECONDS = 15  # how long a "viewing this chat" ping stays valid
-
-
-def _is_viewing_chat(viewer_id, partner_id):
-    """True if `viewer_id` pinged the chat page with `partner_id` open recently."""
-    row = query_one(
-        """
-        SELECT 1 FROM chat_presence
-        WHERE user_id = ? AND partner_id = ?
-          AND updated_at >= datetime('now', ?)
-        """,
-        (viewer_id, partner_id, f"-{PRESENCE_STALE_SECONDS} seconds"),
-    )
-    return bool(row)
 
 
 @chat_bp.route("", methods=["GET"])
@@ -101,40 +89,16 @@ def send_message(user_id):
         raise APIError("Chat unavailable", 403)
 
     data = request.get_json(silent=True) or request.form
-    content = str(data.get("content", "")).strip()
-    if not content:
-        raise APIError("content is required", 400)
+    content = clean_text(data.get("content"), "Message", UserConfig.MESSAGE_MAX_LENGTH, required=True)
 
     execute(
         "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
         (current, user_id, content),
     )
 
-    if not _is_viewing_chat(user_id, current):
-        add_notification(user_id, "message_received", build_notification_payload(from_user_id=current))
+    add_notification(user_id, "message_received", build_notification_payload(from_user_id=current))
 
     return jsonify({"sent": True})
-
-
-@chat_bp.route("/<int:user_id>/presence", methods=["POST"])
-@login_required
-def ping_presence(user_id):
-    current = g.current_user["id"]
-    if not is_match(current, user_id):
-        raise APIError("Chat is available only for connected users", 403)
-    if is_blocked_between(current, user_id):
-        raise APIError("Chat unavailable", 403)
-
-    execute(
-        """
-        INSERT INTO chat_presence (user_id, partner_id, updated_at)
-        VALUES (?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id, partner_id)
-        DO UPDATE SET updated_at = CURRENT_TIMESTAMP
-        """,
-        (current, user_id),
-    )
-    return jsonify({"ok": True})
 
 
 @chat_bp.route("/stream", methods=["GET"])

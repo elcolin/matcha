@@ -34,8 +34,10 @@ from app.utils import (
     is_blocked_between,
     is_match,
     login_required,
+    popular_tags,
     update_popularity,
 )
+from app.validation import clean_text, parse_age, parse_tags
 
 profile_bp = Blueprint("profile", __name__, url_prefix="/profile")
 
@@ -203,6 +205,7 @@ def edit_profile():
         profile=profile,
         pending_email_change=pending_email_change,
         max_upload_bytes=current_app.config["MAX_CONTENT_LENGTH"],
+        popular_tags=popular_tags(),
     )
 
 LOCATION_FORM_KEYS = ("city", "neighborhood", "latitude", "longitude")
@@ -273,8 +276,8 @@ def _resolve_location(user_id, data):
             result = get_location_from_coords(latitude, longitude)
             city, neighborhood = result["city"], result["neighbourhood"] or None
     else:
-        city = (data.get("city") or "").strip()
-        neighborhood = (data.get("neighborhood") or "").strip() or None
+        city = clean_text(data.get("city"), "City", UserConfig.PLACE_MAX_LENGTH) or ""
+        neighborhood = clean_text(data.get("neighborhood"), "Neighborhood", UserConfig.PLACE_MAX_LENGTH) or None
         if not city:
             raise APIError("Please enter your city.", 400)
         if (
@@ -306,6 +309,14 @@ def _update_profile(user_id: int, data):
         raise APIError("Invalid gender", 400)
     if pref is not None and pref not in UserConfig.SEXUAL_PREFERENCES:
         raise APIError("Invalid sexual_preference", 400)
+    # Every field is validated before any write: a single invalid value
+    # (crafted request skipping the form's own checks) aborts the update.
+    age = parse_age(data.get("age"))
+    bio = clean_text(data.get("bio"), "Bio", UserConfig.BIO_MAX_LENGTH)
+    # A blank name keeps the current one (the column is NOT NULL).
+    first_name = clean_text(data.get("first_name"), "First name", UserConfig.NAME_MAX_LENGTH) or None
+    last_name = clean_text(data.get("last_name"), "Last name", UserConfig.NAME_MAX_LENGTH) or None
+    tags = parse_tags(data["tags"]) if data.get("tags") is not None else None
 
     # Location is fully resolved (validation + geocoding) before any write so
     # that a geocoder failure aborts the whole update, leaving the row as is.
@@ -327,15 +338,14 @@ def _update_profile(user_id: int, data):
             neighborhood = CASE WHEN ? THEN ? ELSE neighborhood END,
             latitude = CASE WHEN ? THEN ? ELSE latitude END,
             longitude = CASE WHEN ? THEN ? ELSE longitude END,
-            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END,
-            updated_at = CURRENT_TIMESTAMP
+            location_consent_gps = CASE WHEN ? THEN ? ELSE location_consent_gps END
         WHERE user_id = ?
         """,
         (
             gender,
             pref,
-            data.get("bio"),
-            data.get("age") or None,
+            bio,
+            age,
             has_location, location.get("city"),
             has_location, location.get("neighborhood"),
             has_location, location.get("latitude"),
@@ -345,23 +355,18 @@ def _update_profile(user_id: int, data):
         ),
     )
 
-    UserUpdater.change_users_first_name(user_id, data.get("first_name") or None)
-    UserUpdater.change_users_lastname(user_id, data.get("last_name") or None)
+    UserUpdater.change_users_first_name(user_id, first_name)
+    UserUpdater.change_users_lastname(user_id, last_name)
 
-    tags = data.get("tags")
-    if isinstance(tags, str):
-        # Beginner-friendly: a comma-separated text input instead of a tag widget.
-        tags = [t for t in tags.split(",")]
-    if isinstance(tags, list):
+    if tags is not None:
         execute("DELETE FROM user_tags WHERE user_id = ?", (user_id,))
-        clean_tags = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
-        for tag_name in clean_tags:
+        for tag_name in tags:
             execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
 
-        if clean_tags:
-            placeholders = ",".join(["?"] * len(clean_tags))
+        if tags:
+            placeholders = ",".join(["?"] * len(tags))
             tag_rows = query_all(
-                f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(clean_tags)
+                f"SELECT id FROM tags WHERE name IN ({placeholders})", tuple(tags)
             )
             for tag in tag_rows:
                 execute(
